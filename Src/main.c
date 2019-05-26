@@ -86,6 +86,7 @@ static void MX_TIM6_Init(void);
 void LCD_Config_Start(void);
 void menu(void);
 void show_temperature(void);
+void draw_board(void);
 
 
 /* USER CODE END PFP */
@@ -107,21 +108,22 @@ void show_temperature(void){
 	}
 }
 
-void menu(void){
+void menu(void) {
 
 	//Inicia o menu de jogo
 	LCD_Config_Start();
 
-	while (1) {	//Para compensar o facto de nãpo poder estar no ciclo while da main || REMOVER DEPOIS
+	while (1) {
 		//O X e Y != de 0 garante que o user tocou no ecrã, uma vez que começam a 0
 		if (tsFlag == 1 && touchXvalue != 0 && touchXvalue != 0) {
 
-			//tsFlag = 0;					//Reset da flag
+			tsFlag = 0;
 
 			if (touchXvalue <= 200) {
 				//Chamar a função NEW GAME;
 				//Dar reset ao touchXvalue!!!!!
 				BSP_LED_On(LED_GREEN);
+				draw_board();
 				show_temperature();
 			}
 
@@ -141,6 +143,17 @@ void menu(void){
 		} else {
 
 		}
+	}
+}
+
+void draw_board(void){
+
+	BSP_LCD_Clear(LCD_COLOR_WHITE);		//Mais tarde, talvez tirar isto, para não apagar as peças todas das jogadas
+	BSP_LCD_SetTextColor(LCD_COLOR_BLACK);
+
+	for(int i = 1; i <= 9; i++) {
+		BSP_LCD_DrawVLine(150 + (i * 50), 0, 480);
+		BSP_LCD_DrawHLine(200, 0 + (i * 60), 400);
 	}
 }
 
@@ -203,6 +216,7 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
