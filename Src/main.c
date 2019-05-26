@@ -6,11 +6,11 @@
   ******************************************************************************
   * @attention
   *
-  * FEITO:
+  * TO DO LIST:
+  *			* GOAL 2: DESENHAR O MAPA DE JOGO
   *
-  *		Ativado LCD e o TouchScreen,
-  *		Ativada a Interrupção do TouchScreen,
-  *		Guardar o valor do Toque em X e Y,
+  *
+  *
   *
   *
   *
@@ -66,10 +66,10 @@ SDRAM_HandleTypeDef hsdram1;
 /* USER CODE BEGIN PV */
 bool tsFlag = 0;								//Flag do touchscreen para não marcar vários toques
 int touchXvalue = 0, touchYvalue = 0;			//Para guardar os valores do toque de X e Y
-uint32_t hadc1Value = 0;
-long int hadc1ConvertedValue = 0;
-bool timer6Flag = 0;
-char tempString[20];
+volatile uint32_t hadc1Value = 0;						//Valor recebido na RSI
+long int hadc1ConvertedValue = 0;				//Valor convertido na main
+bool timer6Flag = 0;							//Flag do interrupção do Timer6
+char tempString[100];							//String a ser enviada para o ecrã
 
 /* USER CODE END PV */
 
@@ -83,12 +83,66 @@ static void MX_FMC_Init(void);
 static void MX_LTDC_Init(void);
 static void MX_TIM6_Init(void);
 /* USER CODE BEGIN PFP */
+void LCD_Config_Start(void);
+void menu(void);
+void show_temperature(void);
 
 
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+
+void show_temperature(void){
+
+	if(timer6Flag == 1){
+
+		timer6Flag = 0;
+
+		hadc1ConvertedValue = ((((hadc1Value * VREF)/MAX_CONVERTED_VALUE) - VSENS_AT_AMBIENT_TEMP) * 10 / AVG_SLOPE) + AMBIENT_TEMP;
+
+		sprintf(tempString, "Temp: %ldC", hadc1ConvertedValue);
+		BSP_LCD_DisplayStringAt(0, BSP_LCD_GetYSize()-20, (uint8_t *)tempString, RIGHT_MODE);
+		BSP_LCD_ClearStringLine(30);
+	}
+}
+
+void menu(void){
+
+	//Inicia o menu de jogo
+	LCD_Config_Start();
+
+	while (1) {	//Para compensar o facto de nãpo poder estar no ciclo while da main || REMOVER DEPOIS
+		//O X e Y != de 0 garante que o user tocou no ecrã, uma vez que começam a 0
+		if (tsFlag == 1 && touchXvalue != 0 && touchXvalue != 0) {
+
+			//tsFlag = 0;					//Reset da flag
+
+			if (touchXvalue <= 200) {
+				//Chamar a função NEW GAME;
+				//Dar reset ao touchXvalue!!!!!
+				BSP_LED_On(LED_GREEN);
+				show_temperature();
+			}
+
+			else if (touchXvalue > 200 && touchXvalue <= 400) {
+				//Chamar função High Score
+				BSP_LED_On(LED_RED);
+			}
+
+			else if (touchXvalue > 400 && touchXvalue <= 600) {
+				//Chamar função RULES
+			}
+
+			else if (touchXvalue > 600 && touchXvalue <= 800) {
+				//Chamar função EXIT
+			}
+
+		} else {
+
+		}
+	}
+}
 
 /* USER CODE END 0 */
 
@@ -116,6 +170,7 @@ int main(void)
 
   /* USER CODE BEGIN Init */
 
+
   /* USER CODE END Init */
 
   /* Configure the system clock */
@@ -134,12 +189,13 @@ int main(void)
   MX_LTDC_Init();
   MX_TIM6_Init();
   /* USER CODE BEGIN 2 */
+  BSP_LED_Init(LED_RED);								//APAGAR OS LEDS!!!! SÓ PARA TESTE
+  BSP_LED_Init(LED_GREEN);
+  HAL_TIM_Base_Start_IT(&htim6);						//Segunda vez que esta função é chamada, atenção!!!
   HAL_ADC_Start_IT(&hadc1);
-  BSP_LCD_Init();				//Ver return disto, é mesmo necessário iniciar esta função??
-  BSP_LCD_LayerDefaultInit(0, LCD_FB_START_ADDRESS);
   BSP_TS_Init(BSP_LCD_GetXSize(), BSP_LCD_GetYSize());
   BSP_TS_ITConfig();
-
+  menu();
 
   /* USER CODE END 2 */
 
@@ -147,20 +203,6 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-	  if(timer6Flag == 1){
-
-		  timer6Flag = 0;
-
-		  hadc1ConvertedValue = ((((hadc1Value * VREF)/MAX_CONVERTED_VALUE) - VSENS_AT_AMBIENT_TEMP) * 10 / AVG_SLOPE) + AMBIENT_TEMP;
-
-		  sprintf(tempString, "Temp: %ld degree C", hadc1ConvertedValue);
-		  BSP_LCD_DisplayStringAt(0, BSP_LCD_GetYSize()/2 + 45, (uint8_t *)tempString, RIGHT_MODE);
-	  }
-
-	  if(tsFlag == 1){
-		  tsFlag = 0;
-
-	  }
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -627,11 +669,14 @@ static void MX_GPIO_Init(void)
 /* USER CODE BEGIN 4 */
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 
+	TS_StateTypeDef TS_State;
+
 	//Vai buscar os valores de X e Y
 	if(GPIO_Pin == GPIO_PIN_13){
 		tsFlag = 1;
-		touchXvalue = BSP_LCD_GetXSize();
-		touchYvalue = BSP_LCD_GetYSize();
+		BSP_TS_GetState(&TS_State);
+		touchXvalue = (int)TS_State.touchX[0];
+		touchYvalue = (int)TS_State.touchY[0];
 	}
 }
 
@@ -639,16 +684,70 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 
 	//Timer 6 para a temperatura interna
 	//Está configurado para 1 segundo, alterar para 2!!!!!!
-	if(htim->Instance == TIM6)
+	if(htim->Instance == TIM6){
 		timer6Flag = 1;
+	}
 }
 
 void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* adcHandle){
 
 	//ADC da temperatura
-	if(adcHandle == &hadc1)
+	if(adcHandle == &hadc1){
 		hadc1Value = HAL_ADC_GetValue(&hadc1);
+	}
 }
+
+void LCD_Config_Start(void)
+{
+
+	/* LCD DO MENU */
+  uint32_t  lcd_status = LCD_OK;
+
+  /* Initialize the LCD */
+  lcd_status = BSP_LCD_Init();
+  while(lcd_status != LCD_OK);
+
+  BSP_LCD_LayerDefaultInit(0, LCD_FB_START_ADDRESS);
+
+  /* Clear the LCD */
+  BSP_LCD_Clear(LCD_COLOR_WHITE);
+
+  /* Set LCD Example description */
+  BSP_LCD_SetTextColor(LCD_COLOR_BLACK);
+  BSP_LCD_FillRect(0, 0, BSP_LCD_GetXSize(), 120);
+  BSP_LCD_SetTextColor(LCD_COLOR_WHITE);
+  BSP_LCD_SetBackColor(LCD_COLOR_BLACK);
+  BSP_LCD_SetFont(&Font24);
+  BSP_LCD_DisplayStringAt(0, 50, (uint8_t *)"REVERSI GAME", CENTER_MODE);
+
+
+  BSP_LCD_SetBackColor(LCD_COLOR_WHITE);
+  BSP_LCD_SetTextColor(LCD_COLOR_BLACK);
+
+  BSP_LCD_SetFont(&Font16);
+  BSP_LCD_DisplayStringAt(60, 150, (uint8_t *)"NEW GAME", LEFT_MODE);
+  BSP_LCD_DrawVLine(200, 0, 600);
+
+  BSP_LCD_SetFont(&Font16);
+  BSP_LCD_DisplayStringAt(240, 150, (uint8_t *)"HIGH SCORES", LEFT_MODE);
+  BSP_LCD_DrawVLine(400, 0, 600);
+
+
+  BSP_LCD_SetFont(&Font16);
+  BSP_LCD_DisplayStringAt(465, 150, (uint8_t *)"RULES", LEFT_MODE);
+  BSP_LCD_DrawVLine(600, 0, 600);
+
+
+  BSP_LCD_SetFont(&Font16);
+  BSP_LCD_DisplayStringAt(670, 150, (uint8_t *)"EXIT", LEFT_MODE);
+
+
+
+  BSP_LCD_SetTextColor(LCD_COLOR_BLACK);
+  BSP_LCD_SetBackColor(LCD_COLOR_WHITE);
+  BSP_LCD_SetFont(&Font24);
+}
+
 /* USER CODE END 4 */
 
 /**
