@@ -70,6 +70,11 @@ volatile uint32_t hadc1Value = 0;						//Valor recebido na RSI
 long int hadc1ConvertedValue = 0;				//Valor convertido na main
 bool timer6Flag = 0;							//Flag do interrupção do Timer6
 char tempString[100];							//String a ser enviada para o ecrã
+uint16_t cell_lin = 0;
+uint16_t cell_col = 0;
+int posX = 0;
+int posY = 0;
+TS_StateTypeDef TS_State;
 
 /* USER CODE END PV */
 
@@ -87,7 +92,17 @@ void LCD_Config_Start(void);
 void menu(void);
 void show_temperature(void);
 void draw_board(void);
-
+void LCD_game_play(void);
+void Clean_LCD(void);
+void select_cell(void);
+int aux_board[8][8] = {{0,0,0,0,0,0,0,0},
+					   {0,0,0,0,0,0,0,0},
+					   {0,0,0,0,0,0,0,0},
+					   {0,0,0,0,0,0,0,0},
+					   {0,0,0,0,0,0,0,0},
+					   {0,0,0,0,0,0,0,0},
+					   {0,0,0,0,0,0,0,0},
+					   {0,0,0,0,0,0,0,0}};		//METER PLAYER 1 com 1 e PLAYER 2 com o 2
 
 /* USER CODE END PFP */
 
@@ -110,51 +125,83 @@ void show_temperature(void){
 
 void menu(void) {
 
-	//Inicia o menu de jogo
-	LCD_Config_Start();
+	/* INICIA O MENU DE JOGO
+	 * MOSTRA A TEMPERATURA
+	 * INICIA O MENU DE JOGO */
 
-	while (1) {
-		//O X e Y != de 0 garante que o user tocou no ecrã, uma vez que começam a 0
-		if (tsFlag == 1 && touchXvalue != 0 && touchXvalue != 0) {
+	  if(timer6Flag == 1){
+		  show_temperature();
+		  timer6Flag = 0;
+	  }
 
-			tsFlag = 0;
+	//O X e Y != de 0 garante que o user tocou no ecrã, uma vez que começam a 0
+	if (tsFlag == 1 && touchXvalue != 0 && touchXvalue != 0) {
 
-			if (touchXvalue <= 200) {
-				//Chamar a função NEW GAME;
-				//Dar reset ao touchXvalue!!!!!
-				BSP_LED_On(LED_GREEN);
-				draw_board();
-				show_temperature();
-			}
+		tsFlag = 0;
 
-			else if (touchXvalue > 200 && touchXvalue <= 400) {
-				//Chamar função High Score
-				BSP_LED_On(LED_RED);
-			}
+		if (touchXvalue <= 200) {
+			//Chamar a função NEW GAME;
+			//Dar reset ao touchXvalue!!!!!
+			Clean_LCD();
+			LCD_game_play();
+		}
 
-			else if (touchXvalue > 400 && touchXvalue <= 600) {
-				//Chamar função RULES
-			}
+		else if (touchXvalue > 200 && touchXvalue <= 400) {
+			//Chamar função High Score
+		}
 
-			else if (touchXvalue > 600 && touchXvalue <= 800) {
-				//Chamar função EXIT
-			}
+		else if (touchXvalue > 400 && touchXvalue <= 600) {
+			//Chamar função RULES
+		}
 
-		} else {
-
+		else if (touchXvalue > 600 && touchXvalue <= 800) {
+			//Chamar função EXIT
 		}
 	}
 }
 
 void draw_board(void){
 
-	BSP_LCD_Clear(LCD_COLOR_WHITE);		//Mais tarde, talvez tirar isto, para não apagar as peças todas das jogadas
 	BSP_LCD_SetTextColor(LCD_COLOR_BLACK);
 
 	for(int i = 1; i <= 9; i++) {
-		BSP_LCD_DrawVLine(150 + (i * 50), 0, 480);
-		BSP_LCD_DrawHLine(200, 0 + (i * 60), 400);
+		BSP_LCD_DrawVLine(150 + (i * 50), 40, 400);
+		BSP_LCD_DrawHLine(200, (i * 50) - 10, 400);
 	}
+}
+
+void Clean_LCD(void){
+
+	BSP_LCD_Clear(LCD_COLOR_WHITE);
+}
+
+void LCD_game_play(void){
+
+	draw_board();
+	select_cell();
+}
+
+void select_cell(void) {
+
+	BSP_LED_On(LED_GREEN);
+	while (1) {
+		if (TS_State.touchX[0] > 200 && TS_State.touchX[0] < 600
+				&& TS_State.touchY[0] > 40 && TS_State.touchY[0] < 440) {
+
+			BSP_LED_On(LED_RED);
+			cell_lin = (TS_State.touchX[0] - 200) / 50;
+			cell_col = (TS_State.touchY[0] - 40) / 50;
+
+			aux_board[cell_lin][cell_col] = 1;		//Mudar para o outro player
+
+			posX = 200 + (cell_lin) * 50;
+			posY = 40 + (cell_col) * 50;
+
+			BSP_LCD_SetTextColor(LCD_COLOR_RED);	//Mudar para o outro player;
+			BSP_LCD_FillCircle(posX + 25, posY + 25, 20);
+		}
+	}
+
 }
 
 /* USER CODE END 0 */
@@ -208,7 +255,8 @@ int main(void)
   HAL_ADC_Start_IT(&hadc1);
   BSP_TS_Init(BSP_LCD_GetXSize(), BSP_LCD_GetYSize());
   BSP_TS_ITConfig();
-  menu();
+  LCD_Config_Start();
+  //menu();
 
   /* USER CODE END 2 */
 
@@ -216,6 +264,7 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+	  menu();
 
     /* USER CODE END WHILE */
 
@@ -682,8 +731,6 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
-
-	TS_StateTypeDef TS_State;
 
 	//Vai buscar os valores de X e Y
 	if(GPIO_Pin == GPIO_PIN_13){
