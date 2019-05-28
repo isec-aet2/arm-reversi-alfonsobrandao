@@ -117,6 +117,7 @@ void show_temperature(void){
 
 		hadc1ConvertedValue = ((((hadc1Value * VREF)/MAX_CONVERTED_VALUE) - VSENS_AT_AMBIENT_TEMP) * 10 / AVG_SLOPE) + AMBIENT_TEMP;
 
+		BSP_LCD_SetTextColor(LCD_COLOR_BLACK);
 		sprintf(tempString, "Temp: %ldC", hadc1ConvertedValue);
 		BSP_LCD_DisplayStringAt(0, BSP_LCD_GetYSize()-20, (uint8_t *)tempString, RIGHT_MODE);
 		BSP_LCD_ClearStringLine(30);
@@ -129,10 +130,7 @@ void menu(void) {
 	 * MOSTRA A TEMPERATURA
 	 * INICIA O MENU DE JOGO */
 
-	  if(timer6Flag == 1){
-		  show_temperature();
-		  timer6Flag = 0;
-	  }
+	show_temperature();
 
 	//O X e Y != de 0 garante que o user tocou no ecrã, uma vez que começam a 0
 	if (tsFlag == 1 && touchXvalue != 0 && touchXvalue != 0) {
@@ -163,6 +161,7 @@ void menu(void) {
 void draw_board(void){
 
 	BSP_LCD_SetTextColor(LCD_COLOR_BLACK);
+	show_temperature();
 
 	for(int i = 1; i <= 9; i++) {
 		BSP_LCD_DrawVLine(150 + (i * 50), 40, 400);
@@ -177,18 +176,18 @@ void Clean_LCD(void){
 
 void LCD_game_play(void){
 
+	show_temperature();
 	draw_board();
 	select_cell();
 }
 
 void select_cell(void) {
 
-	BSP_LED_On(LED_GREEN);
-	while (1) {
+	while (1) {					//Sem este while 1 nao funciona, dar fix nisto!
+		show_temperature();
 		if (TS_State.touchX[0] > 200 && TS_State.touchX[0] < 600
 				&& TS_State.touchY[0] > 40 && TS_State.touchY[0] < 440) {
 
-			BSP_LED_On(LED_RED);
 			cell_lin = (TS_State.touchX[0] - 200) / 50;
 			cell_col = (TS_State.touchY[0] - 40) / 50;
 
