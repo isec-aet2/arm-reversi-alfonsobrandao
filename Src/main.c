@@ -43,6 +43,15 @@
 #define VSENS_AT_AMBIENT_TEMP  760    /* VSENSE value (mv) at ambient temperature */
 #define AVG_SLOPE               25    /* Avg_Solpe multiply by 10 */
 #define VREF                  3300
+
+typedef enum {
+	MENU,
+	INGAME,
+	SCORES,
+	RULES,
+	ABOUT
+}states;
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -66,7 +75,7 @@ SDRAM_HandleTypeDef hsdram1;
 /* USER CODE BEGIN PV */
 bool tsFlag = 0;								//Flag do touchscreen para não marcar vários toques
 int touchXvalue = 0, touchYvalue = 0;			//Para guardar os valores do toque de X e Y
-volatile uint32_t hadc1Value = 0;						//Valor recebido na RSI
+volatile uint32_t hadc1Value = 0;				//Valor recebido na RSI
 long int hadc1ConvertedValue = 0;				//Valor convertido na main
 bool timer6Flag = 0;							//Flag do interrupção do Timer6
 char tempString[100];							//String a ser enviada para o ecrã
@@ -74,6 +83,9 @@ uint16_t cell_lin = 0;
 uint16_t cell_col = 0;
 int posX = 0;
 int posY = 0;
+bool player = 0;
+int play_timer = 20;
+int num_plays = 2;								//NO FIM PARA MOSTRAR O NUMERO DE JOGADAS, SUBTRAIR 2 PARA BATER CERTO
 TS_StateTypeDef TS_State;
 
 /* USER CODE END PV */
@@ -89,12 +101,10 @@ static void MX_LTDC_Init(void);
 static void MX_TIM6_Init(void);
 /* USER CODE BEGIN PFP */
 void LCD_Config_Start(void);
-void menu(void);
 void show_temperature(void);
 void draw_board(void);
-void LCD_game_play(void);
-void Clean_LCD(void);
-void select_cell(void);
+void stamp_play(void);
+//bool validate_play(int cell_lin, int cell_col);
 int aux_board[8][8] = {{0,0,0,0,0,0,0,0},
 					   {0,0,0,0,0,0,0,0},
 					   {0,0,0,0,0,0,0,0},
@@ -124,44 +134,10 @@ void show_temperature(void){
 	}
 }
 
-void menu(void) {
-
-	/* INICIA O MENU DE JOGO
-	 * MOSTRA A TEMPERATURA
-	 * INICIA O MENU DE JOGO */
-
-	show_temperature();
-
-	//O X e Y != de 0 garante que o user tocou no ecrã, uma vez que começam a 0
-	if (tsFlag == 1 && touchXvalue != 0 && touchXvalue != 0) {
-
-		tsFlag = 0;
-
-		if (touchXvalue <= 200) {
-			//Chamar a função NEW GAME;
-			//Dar reset ao touchXvalue!!!!!
-			Clean_LCD();
-			LCD_game_play();
-		}
-
-		else if (touchXvalue > 200 && touchXvalue <= 400) {
-			//Chamar função High Score
-		}
-
-		else if (touchXvalue > 400 && touchXvalue <= 600) {
-			//Chamar função RULES
-		}
-
-		else if (touchXvalue > 600 && touchXvalue <= 800) {
-			//Chamar função EXIT
-		}
-	}
-}
 
 void draw_board(void){
 
 	BSP_LCD_SetTextColor(LCD_COLOR_BLACK);
-	show_temperature();
 
 	for(int i = 1; i <= 9; i++) {
 		BSP_LCD_DrawVLine(150 + (i * 50), 40, 400);
@@ -169,39 +145,69 @@ void draw_board(void){
 	}
 }
 
-void Clean_LCD(void){
+void stamp_play(void) {
 
-	BSP_LCD_Clear(LCD_COLOR_WHITE);
-}
+	if(num_plays % 2 == 0)
+		BSP_LED_On(LED_RED);
+	else
+		BSP_LED_On(LED_GREEN);
 
-void LCD_game_play(void){
 
-	show_temperature();
-	draw_board();
-	select_cell();
-}
 
-void select_cell(void) {
+	while (play_timer != 0) {					//Sem este while 1 nao funciona, dar fix nisto!
 
-	while (1) {					//Sem este while 1 nao funciona, dar fix nisto!
-		show_temperature();
-		if (TS_State.touchX[0] > 200 && TS_State.touchX[0] < 600
-				&& TS_State.touchY[0] > 40 && TS_State.touchY[0] < 440) {
+		if (tsFlag == 1) {
 
-			cell_lin = (TS_State.touchX[0] - 200) / 50;
-			cell_col = (TS_State.touchY[0] - 40) / 50;
+			tsFlag = 0;
 
-			aux_board[cell_lin][cell_col] = 1;		//Mudar para o outro player
+			if (TS_State.touchX[0] > 200 && TS_State.touchX[0] < 600
+					&& TS_State.touchY[0] > 40 && TS_State.touchY[0] < 440) {
 
-			posX = 200 + (cell_lin) * 50;
-			posY = 40 + (cell_col) * 50;
+				cell_lin = (TS_State.touchX[0] - 200) / 50;
+				cell_col = (TS_State.touchY[0] - 40) / 50;
 
-			BSP_LCD_SetTextColor(LCD_COLOR_RED);	//Mudar para o outro player;
-			BSP_LCD_FillCircle(posX + 25, posY + 25, 20);
+				aux_board[cell_lin][cell_col] = 1;	//Mudar para o outro player
+
+				posX = 200 + (cell_lin) * 50;
+				posY = 40 + (cell_col) * 50;
+
+				//Se for jogada válida - desenhar na board:
+				//if(validate_play == 1)
+
+				if(num_plays % 2 == 0){
+					BSP_LCD_SetTextColor(LCD_COLOR_RED);
+					BSP_LCD_FillCircle(posX + 25, posY + 25, 20);
+					play_timer = 20;
+					num_plays++;
+					HAL_Delay(100);
+					BSP_LED_Off(LED_RED);
+					break;
+
+				}
+				else if(num_plays % 2 != 0){
+					BSP_LCD_SetTextColor(LCD_COLOR_GREEN);
+					BSP_LCD_FillCircle(posX + 25, posY + 25, 20);
+					play_timer = 20;
+					num_plays++;
+					HAL_Delay(100);
+					BSP_LED_Off(LED_GREEN);
+					break;
+				}
+			}
 		}
 	}
-
 }
+
+/*bool validate_play(int cell_lin, int cell_col){
+
+	if(aux_board[cell_lin][cell_col] == '0' || aux_board[cell_lin][cell_col] == ){
+		if(){
+
+		}
+
+	}
+	return 0;
+}*/
 
 /* USER CODE END 0 */
 
@@ -212,6 +218,8 @@ void select_cell(void) {
 int main(void)
 {
   /* USER CODE BEGIN 1 */
+	states state = MENU;
+
 
   /* USER CODE END 1 */
   
@@ -263,7 +271,49 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-	  menu();
+
+	  show_temperature();
+	  switch (state) {
+
+	  		case INGAME:
+	  			//NEW GAME
+	  			BSP_LCD_Clear(LCD_COLOR_WHITE);
+	  			draw_board();
+	  			stamp_play();
+	  			break;
+
+	  		case SCORES:
+	  			//HIGH SCORE
+	  			break;
+
+	  		case RULES:
+	  			//RULES
+	  			break;
+
+	  		case ABOUT:
+	  			//EXIT
+	  			break;
+
+	  		case MENU:
+	  			if (tsFlag == 1 && touchXvalue != 0 && touchXvalue != 0) {
+
+	  				tsFlag = 0;
+
+	  				if (touchXvalue <= 200)
+	  					state = INGAME;
+
+	  				else if (touchXvalue > 200 && touchXvalue <= 400)
+	  					state = SCORES;
+
+	  				else if (touchXvalue > 400 && touchXvalue <= 600)
+	  					state = RULES;
+
+	  				else if (touchXvalue > 600 && touchXvalue <= 800)
+	  					state = ABOUT;
+	  			}
+	  			break;
+	  		}
+
 
     /* USER CODE END WHILE */
 
@@ -746,6 +796,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 	//Está configurado para 1 segundo, alterar para 2!!!!!!
 	if(htim->Instance == TIM6){
 		timer6Flag = 1;
+		play_timer--;
 	}
 }
 
