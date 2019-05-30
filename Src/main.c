@@ -20,6 +20,7 @@
 
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "fatfs.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -70,6 +71,8 @@ DSI_HandleTypeDef hdsi;
 
 LTDC_HandleTypeDef hltdc;
 
+SD_HandleTypeDef hsd2;
+
 TIM_HandleTypeDef htim6;
 TIM_HandleTypeDef htim7;
 
@@ -101,6 +104,7 @@ static void MX_DMA2D_Init(void);
 static void MX_DSIHOST_DSI_Init(void);
 static void MX_FMC_Init(void);
 static void MX_LTDC_Init(void);
+static void MX_SDMMC2_SD_Init(void);
 static void MX_TIM6_Init(void);
 static void MX_TIM7_Init(void);
 /* USER CODE BEGIN PFP */
@@ -110,6 +114,7 @@ void show_temperature(void);
 void draw_board(void);
 void stamp_play(void);
 void init_aux_board(void);
+void save_2_sdcard(void);
 bool validate_play(int cell_lin, int cell_col, int player_turn);
 int aux_board[BOARD_SIZE][BOARD_SIZE] = {0};		//METER PLAYER 1 com 1 e PLAYER 2 com o 2
 int valid_plays[BOARD_SIZE][BOARD_SIZE] = {0};
@@ -119,6 +124,24 @@ int valid_plays[BOARD_SIZE][BOARD_SIZE] = {0};
 /* USER CODE BEGIN 0 */
 
 states state = MENU;
+
+void save_2_sdcard(void){
+
+	int nBytes;
+	char string[20];
+
+	if (f_mount(&SDFatFS, SDPath, 0) != FR_OK)
+		Error_Handler();
+
+	if (f_open(&SDFile, "reversi.txt", FA_WRITE | FA_CREATE_ALWAYS) != FR_OK)
+		Error_Handler();
+	sprintf(string, "PLAYER1");
+
+	if (f_write(&SDFile, string, strlen(string), &nBytes) != FR_OK)
+		Error_Handler();
+
+	f_close(&SDFile);
+}
 
 void init_aux_board(void){
 
@@ -141,7 +164,15 @@ void show_temperature(void){
 
 		hadc1ConvertedValue = ((((hadc1Value * VREF)/MAX_CONVERTED_VALUE) - VSENS_AT_AMBIENT_TEMP) * 10 / AVG_SLOPE) + AMBIENT_TEMP;
 
-		BSP_LCD_SetTextColor(LCD_COLOR_BLACK);
+		if(state == INGAME){
+			BSP_LCD_SetTextColor(LCD_COLOR_WHITE);
+			BSP_LCD_SetBackColor(LCD_COLOR_BLACK);
+		}
+		else{
+			BSP_LCD_SetTextColor(LCD_COLOR_BLACK);
+			BSP_LCD_SetBackColor(LCD_COLOR_WHITE);
+		}
+
 		sprintf(tempString, "Temp: %ldC", hadc1ConvertedValue);
 		BSP_LCD_DisplayStringAt(0, BSP_LCD_GetYSize()-20, (uint8_t *)tempString, RIGHT_MODE);
 		BSP_LCD_ClearStringLine(30);
@@ -414,8 +445,10 @@ int main(void)
   MX_DSIHOST_DSI_Init();
   MX_FMC_Init();
   MX_LTDC_Init();
+  MX_SDMMC2_SD_Init();
   MX_TIM6_Init();
   MX_TIM7_Init();
+  MX_FATFS_Init();
   /* USER CODE BEGIN 2 */
   BSP_LED_Init(LED_RED);
   BSP_LED_Init(LED_GREEN);
@@ -425,7 +458,6 @@ int main(void)
   BSP_TS_Init(BSP_LCD_GetXSize(), BSP_LCD_GetYSize());
   BSP_TS_ITConfig();
   LCD_Config_Start();
-  //menu();
 
   /* USER CODE END 2 */
 
@@ -440,7 +472,6 @@ int main(void)
 
 	  		case INGAME:
 	  			//NEW GAME
-	  			BSP_LCD_Clear(LCD_COLOR_WHITE);
 	  			LCD_Gameplay();
 	  			stamp_play();
 	  			break;
@@ -458,12 +489,17 @@ int main(void)
 	  			break;
 
 	  		case MENU:
+
+	  			save_2_sdcard();
+
 	  			if (tsFlag == 1 && touchXvalue != 0 && touchXvalue != 0) {
 
 	  				tsFlag = 0;
 
-	  				if (touchXvalue <= 200)
+	  				if (touchXvalue <= 200){
+	  					BSP_LCD_Clear(LCD_COLOR_WHITE);
 	  					state = INGAME;
+	  				}
 
 	  				else if (touchXvalue > 200 && touchXvalue <= 400)
 	  					state = SCORES;
@@ -508,7 +544,7 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.PLL.PLLM = 25;
   RCC_OscInitStruct.PLL.PLLN = 400;
   RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
-  RCC_OscInitStruct.PLL.PLLQ = 2;
+  RCC_OscInitStruct.PLL.PLLQ = 8;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
     Error_Handler();
@@ -532,13 +568,16 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
-  PeriphClkInitStruct.PeriphClockSelection = RCC_PERIPHCLK_LTDC;
+  PeriphClkInitStruct.PeriphClockSelection = RCC_PERIPHCLK_LTDC|RCC_PERIPHCLK_SDMMC2
+                              |RCC_PERIPHCLK_CLK48;
   PeriphClkInitStruct.PLLSAI.PLLSAIN = 192;
   PeriphClkInitStruct.PLLSAI.PLLSAIR = 2;
   PeriphClkInitStruct.PLLSAI.PLLSAIQ = 2;
   PeriphClkInitStruct.PLLSAI.PLLSAIP = RCC_PLLSAIP_DIV2;
   PeriphClkInitStruct.PLLSAIDivQ = 1;
   PeriphClkInitStruct.PLLSAIDivR = RCC_PLLSAIDIVR_2;
+  PeriphClkInitStruct.Clk48ClockSelection = RCC_CLK48SOURCE_PLL;
+  PeriphClkInitStruct.Sdmmc2ClockSelection = RCC_SDMMC2CLKSOURCE_CLK48;
   if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInitStruct) != HAL_OK)
   {
     Error_Handler();
@@ -826,6 +865,34 @@ static void MX_LTDC_Init(void)
 }
 
 /**
+  * @brief SDMMC2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_SDMMC2_SD_Init(void)
+{
+
+  /* USER CODE BEGIN SDMMC2_Init 0 */
+
+  /* USER CODE END SDMMC2_Init 0 */
+
+  /* USER CODE BEGIN SDMMC2_Init 1 */
+
+  /* USER CODE END SDMMC2_Init 1 */
+  hsd2.Instance = SDMMC2;
+  hsd2.Init.ClockEdge = SDMMC_CLOCK_EDGE_RISING;
+  hsd2.Init.ClockBypass = SDMMC_CLOCK_BYPASS_DISABLE;
+  hsd2.Init.ClockPowerSave = SDMMC_CLOCK_POWER_SAVE_DISABLE;
+  hsd2.Init.BusWide = SDMMC_BUS_WIDE_1B;
+  hsd2.Init.HardwareFlowControl = SDMMC_HARDWARE_FLOW_CONTROL_DISABLE;
+  hsd2.Init.ClockDiv = 0;
+  /* USER CODE BEGIN SDMMC2_Init 2 */
+
+  /* USER CODE END SDMMC2_Init 2 */
+
+}
+
+/**
   * @brief TIM6 Initialization Function
   * @param None
   * @retval None
@@ -960,11 +1027,12 @@ static void MX_GPIO_Init(void)
   /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOE_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
-  __HAL_RCC_GPIOG_CLK_ENABLE();
   __HAL_RCC_GPIOD_CLK_ENABLE();
+  __HAL_RCC_GPIOG_CLK_ENABLE();
   __HAL_RCC_GPIOI_CLK_ENABLE();
   __HAL_RCC_GPIOF_CLK_ENABLE();
   __HAL_RCC_GPIOH_CLK_ENABLE();
+  __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOJ_CLK_ENABLE();
 
   /*Configure GPIO pin : PI13 */
@@ -973,7 +1041,22 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOI, &GPIO_InitStruct);
 
+  /*Configure GPIO pin : PI15 */
+  GPIO_InitStruct.Pin = GPIO_PIN_15;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(GPIOI, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : PA0 */
+  GPIO_InitStruct.Pin = GPIO_PIN_0;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
   /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI0_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI0_IRQn);
+
   HAL_NVIC_SetPriority(EXTI15_10_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
 
@@ -988,6 +1071,9 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 		BSP_TS_GetState(&TS_State);
 		touchXvalue = (int)TS_State.touchX[0];
 		touchYvalue = (int)TS_State.touchY[0];
+	}
+	if(GPIO_Pin == GPIO_PIN_0){
+		state = MENU;
 	}
 }
 
