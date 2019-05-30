@@ -32,6 +32,13 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
+typedef enum {
+	MENU,
+	INGAME,
+	SCORES,
+	RULES,
+	ABOUT
+}states;
 
 /* USER CODE END PTD */
 
@@ -43,14 +50,9 @@
 #define VSENS_AT_AMBIENT_TEMP  760    /* VSENSE value (mv) at ambient temperature */
 #define AVG_SLOPE               25    /* Avg_Solpe multiply by 10 */
 #define VREF                  3300
-
-typedef enum {
-	MENU,
-	INGAME,
-	SCORES,
-	RULES,
-	ABOUT
-}states;
+#define BOARD_SIZE				 8
+#define PLAYER1					 1
+#define PLAYER2					 2
 
 /* USER CODE END PD */
 
@@ -69,6 +71,7 @@ DSI_HandleTypeDef hdsi;
 LTDC_HandleTypeDef hltdc;
 
 TIM_HandleTypeDef htim6;
+TIM_HandleTypeDef htim7;
 
 SDRAM_HandleTypeDef hsdram1;
 
@@ -77,15 +80,15 @@ bool tsFlag = 0;								//Flag do touchscreen para não marcar vários toques
 int touchXvalue = 0, touchYvalue = 0;			//Para guardar os valores do toque de X e Y
 volatile uint32_t hadc1Value = 0;				//Valor recebido na RSI
 long int hadc1ConvertedValue = 0;				//Valor convertido na main
-bool timer6Flag = 0;							//Flag do interrupção do Timer6
+bool timer7Flag = 0;							//Flag do interrupção do Timer6
 char tempString[100];							//String a ser enviada para o ecrã
 uint16_t cell_lin = 0;
 uint16_t cell_col = 0;
 int posX = 0;
 int posY = 0;
-bool player = 0;
+int total_time = 0;
 int play_timer = 20;
-int num_plays = 2;								//NO FIM PARA MOSTRAR O NUMERO DE JOGADAS, SUBTRAIR 2 PARA BATER CERTO
+int num_plays = 1;								//NO FIM PARA MOSTRAR O NUMERO DE JOGADAS, SUBTRAIR 2 PARA BATER CERTO
 TS_StateTypeDef TS_State;
 
 /* USER CODE END PV */
@@ -99,31 +102,42 @@ static void MX_DSIHOST_DSI_Init(void);
 static void MX_FMC_Init(void);
 static void MX_LTDC_Init(void);
 static void MX_TIM6_Init(void);
+static void MX_TIM7_Init(void);
 /* USER CODE BEGIN PFP */
 void LCD_Config_Start(void);
+void LCD_Gameplay(void);
 void show_temperature(void);
 void draw_board(void);
 void stamp_play(void);
-//bool validate_play(int cell_lin, int cell_col);
-int aux_board[8][8] = {{0,0,0,0,0,0,0,0},
-					   {0,0,0,0,0,0,0,0},
-					   {0,0,0,0,0,0,0,0},
-					   {0,0,0,0,0,0,0,0},
-					   {0,0,0,0,0,0,0,0},
-					   {0,0,0,0,0,0,0,0},
-					   {0,0,0,0,0,0,0,0},
-					   {0,0,0,0,0,0,0,0}};		//METER PLAYER 1 com 1 e PLAYER 2 com o 2
-
+void init_aux_board(void);
+bool validate_play(int cell_lin, int cell_col, int player_turn);
+int aux_board[BOARD_SIZE][BOARD_SIZE] = {0};		//METER PLAYER 1 com 1 e PLAYER 2 com o 2
+int valid_plays[BOARD_SIZE][BOARD_SIZE] = {0};
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
+states state = MENU;
+
+void init_aux_board(void){
+
+	for(int i = 0; i < BOARD_SIZE; i++){
+		for(int j = 0; j < BOARD_SIZE; j++){
+			aux_board[i][j] = (int) '.';
+		}
+	}
+	aux_board[BOARD_SIZE / 2 - 1][BOARD_SIZE / 2 - 1] = PLAYER1;
+	aux_board[BOARD_SIZE / 2]	 [BOARD_SIZE / 2]     = PLAYER1;
+	aux_board[BOARD_SIZE / 2 - 1][BOARD_SIZE / 2]     = PLAYER2;
+	aux_board[BOARD_SIZE / 2 - 1][BOARD_SIZE / 2 - 1] = PLAYER2;
+}
+
 void show_temperature(void){
 
-	if(timer6Flag == 1){
+	if(timer7Flag == 1){
 
-		timer6Flag = 0;
+		timer7Flag = 0;
 
 		hadc1ConvertedValue = ((((hadc1Value * VREF)/MAX_CONVERTED_VALUE) - VSENS_AT_AMBIENT_TEMP) * 10 / AVG_SLOPE) + AMBIENT_TEMP;
 
@@ -133,7 +147,6 @@ void show_temperature(void){
 		BSP_LCD_ClearStringLine(30);
 	}
 }
-
 
 void draw_board(void){
 
@@ -145,69 +158,216 @@ void draw_board(void){
 	}
 }
 
+bool validate_play(int cell_lin, int cell_col, int player_turn){
+
+
+	HAL_Delay(1000);
+	int i = 0, j = 0;
+	bool valid = 0;
+
+	if(aux_board[cell_lin][cell_col] != '.'){
+		valid_plays[cell_lin][cell_col] = 'N';
+		return 0;
+	}
+
+
+	//Check right diagonal inferior
+	for(i = cell_lin - 1, j = cell_col - 1; i >= 0 && j >= 0; i--, j--){
+		if(aux_board[i][j] == '.')
+			break;
+		if(aux_board[i][j] != player_turn){
+			valid = 1;
+		}
+		else
+			if(aux_board[i][j] == player_turn && valid){
+				valid_plays[cell_lin][cell_col] = 'Y';
+				return 1;
+			}
+			else
+				break;
+	}
+
+	//Vertical Superior
+	valid = 0;
+	for(i = cell_lin - 1, j = cell_col; i >= 0; i--){
+		if(aux_board[i][j] == '.')
+			break;
+		if(aux_board[i][j] == !player_turn){
+			valid = 1;
+		}
+		else
+			if(aux_board[i][j] == player_turn && valid){
+				valid_plays[cell_lin][cell_col] = 'Y';
+				return 1;
+			}
+			else
+				break;
+	}
+
+	//Superior Right Diagonal
+	valid = 0;
+	for(i = cell_lin - 1, j = cell_col +1; i > 0 && j < BOARD_SIZE; i--, j++){
+		if(aux_board[i][j] == '.')
+			break;
+		if(aux_board[i][j] == !player_turn){
+			valid = 1;
+		}
+		else
+			if(aux_board[i][j] == player_turn && valid){
+				valid_plays[cell_lin][cell_col] = 'Y';
+				return 1;
+			}
+			else
+				break;
+	}
+
+	//Right Horizontal
+	valid = 0;
+	for(i = cell_lin, j = cell_col + 1; j < BOARD_SIZE; j++){
+		if(aux_board[i][j] == '.')
+			break;
+		if(aux_board[i][j] == !player_turn){
+			valid = 1;
+		}
+		else
+			if(aux_board[i][j] == player_turn && valid){
+				valid_plays[cell_lin][cell_col] = 'Y';
+				return 1;
+			}
+			else
+				break;
+	}
+
+	//Right Diagonal Inferior
+    valid = 0;
+    for (i = cell_lin + 1, j = cell_col + 1; i < BOARD_SIZE && j < BOARD_SIZE; i++, j++) {
+        if (aux_board[i][j] == '.')
+            break;
+        if (aux_board[i][j] == !player_turn) {
+            valid = 1;
+        } else
+            if (aux_board[i][j] == player_turn && valid) {
+                valid_plays[cell_lin][cell_col] = 'Y';
+                return 1;
+            }
+            else
+                break;
+    }
+
+    //Vertical Inferior
+    valid = 0;
+    for (i = cell_lin + 1, j = cell_col; i < BOARD_SIZE; i++) {
+        if (aux_board[i][j] == '.')
+            break;
+        if (aux_board[i][j] == !player_turn) {
+            valid = 1;
+        } else
+            if (aux_board[i][j] == player_turn && valid) {
+                valid_plays[cell_lin][cell_col] = 'Y';
+                return 1;
+            }
+            else
+                break;
+    }
+
+    //Inferior Left Diagonal
+    valid = 0;
+    for (i = cell_lin + 1, j = cell_col - 1; i < BOARD_SIZE && j >= 0; i++, j--) {
+        if (aux_board[i][j] == '.')
+            break;
+        if (aux_board[i][j] == !player_turn) {
+            valid = 1;
+        } else
+            if (aux_board[i][j] == player_turn && valid) {
+                valid_plays[cell_lin][cell_col] = 'Y';
+                return 1;
+            }
+            else
+                break;
+    }
+
+
+    //Left Horizontal
+    valid = 0;
+    for (i = cell_lin, j = cell_col - 1; j >= 0; j--) {
+        if (aux_board[i][j] == '.')
+            break;
+        if (aux_board[i][j] == !player_turn) {
+            valid = 1;
+        } else
+            if (aux_board[i][j] == player_turn && valid) {
+                valid_plays[cell_lin][cell_col] = 'Y';
+                return 1;
+            }
+            else
+                break;
+    }
+    valid_plays[cell_lin][cell_col] = 'N';
+    return 0;
+
+}
+
 void stamp_play(void) {
 
-	if(num_plays % 2 == 0)
+	int player_turn = 0;
+
+	if(num_plays % 2 == 0){
 		BSP_LED_On(LED_RED);
-	else
+		player_turn = PLAYER1;
+	}
+
+	else{
 		BSP_LED_On(LED_GREEN);
+		player_turn = PLAYER2;
+	}
 
 
-
-	while (play_timer != 0) {					//Sem este while 1 nao funciona, dar fix nisto!
+	if (play_timer != 0) {					//TEM QUE TER WHILE PARA FUNCIONAR
 
 		if (tsFlag == 1) {
 
 			tsFlag = 0;
 
 			if (TS_State.touchX[0] > 200 && TS_State.touchX[0] < 600
-					&& TS_State.touchY[0] > 40 && TS_State.touchY[0] < 440) {
+					&& TS_State.touchY[0] > 40 && TS_State.touchY[0] < 440) {				//SE ESTIVER DENTRO DA BOARD
 
 				cell_lin = (TS_State.touchX[0] - 200) / 50;
 				cell_col = (TS_State.touchY[0] - 40) / 50;
 
-				aux_board[cell_lin][cell_col] = 1;	//Mudar para o outro player
-
 				posX = 200 + (cell_lin) * 50;
 				posY = 40 + (cell_col) * 50;
 
-				//Se for jogada válida - desenhar na board:
-				//if(validate_play == 1)
 
-				if(num_plays % 2 == 0){
-					BSP_LCD_SetTextColor(LCD_COLOR_RED);
+				if(validate_play(cell_lin, cell_col, player_turn)){						//SE A JOGADA FOR V�?LIDA
+					aux_board[cell_lin][cell_col] = player_turn;
+
+					if(num_plays % 2 == 0)
+						BSP_LCD_SetTextColor(LCD_COLOR_RED);
+
+					else if(num_plays % 2 != 0)
+						BSP_LCD_SetTextColor(LCD_COLOR_GREEN);
+
 					BSP_LCD_FillCircle(posX + 25, posY + 25, 20);
 					play_timer = 20;
 					num_plays++;
-					HAL_Delay(100);
+					//HAL_Delay(10);		//Ver se dá para tirar
+					TS_State.touchX[0] = 0;
+					TS_State.touchY[0] = 0;
 					BSP_LED_Off(LED_RED);
-					break;
-
-				}
-				else if(num_plays % 2 != 0){
-					BSP_LCD_SetTextColor(LCD_COLOR_GREEN);
-					BSP_LCD_FillCircle(posX + 25, posY + 25, 20);
-					play_timer = 20;
-					num_plays++;
-					HAL_Delay(100);
 					BSP_LED_Off(LED_GREEN);
-					break;
+
+					return;
 				}
+				else if(!validate_play(cell_lin, cell_col, player_turn))					//SE A JOGADA NÃO FOR V�?LIDA
+					return;
 			}
 		}
 	}
+	else
+		return;
 }
 
-/*bool validate_play(int cell_lin, int cell_col){
 
-	if(aux_board[cell_lin][cell_col] == '0' || aux_board[cell_lin][cell_col] == ){
-		if(){
-
-		}
-
-	}
-	return 0;
-}*/
 
 /* USER CODE END 0 */
 
@@ -218,7 +378,7 @@ void stamp_play(void) {
 int main(void)
 {
   /* USER CODE BEGIN 1 */
-	states state = MENU;
+	//states state = MENU;
 
 
   /* USER CODE END 1 */
@@ -255,10 +415,12 @@ int main(void)
   MX_FMC_Init();
   MX_LTDC_Init();
   MX_TIM6_Init();
+  MX_TIM7_Init();
   /* USER CODE BEGIN 2 */
-  BSP_LED_Init(LED_RED);								//APAGAR OS LEDS!!!! SÓ PARA TESTE
+  BSP_LED_Init(LED_RED);
   BSP_LED_Init(LED_GREEN);
-  HAL_TIM_Base_Start_IT(&htim6);						//Segunda vez que esta função é chamada, atenção!!!
+  HAL_TIM_Base_Start_IT(&htim6);
+  HAL_TIM_Base_Start_IT(&htim7);
   HAL_ADC_Start_IT(&hadc1);
   BSP_TS_Init(BSP_LCD_GetXSize(), BSP_LCD_GetYSize());
   BSP_TS_ITConfig();
@@ -272,13 +434,14 @@ int main(void)
   while (1)
   {
 
+	  //acrescentar draw_aux_table lá em cima
 	  show_temperature();
 	  switch (state) {
 
 	  		case INGAME:
 	  			//NEW GAME
 	  			BSP_LCD_Clear(LCD_COLOR_WHITE);
-	  			draw_board();
+	  			LCD_Gameplay();
 	  			stamp_play();
 	  			break;
 
@@ -700,6 +863,44 @@ static void MX_TIM6_Init(void)
 
 }
 
+/**
+  * @brief TIM7 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM7_Init(void)
+{
+
+  /* USER CODE BEGIN TIM7_Init 0 */
+
+  /* USER CODE END TIM7_Init 0 */
+
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM7_Init 1 */
+
+  /* USER CODE END TIM7_Init 1 */
+  htim7.Instance = TIM7;
+  htim7.Init.Prescaler = 19999;
+  htim7.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim7.Init.Period = 9999;
+  htim7.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim7) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim7, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM7_Init 2 */
+
+  /* USER CODE END TIM7_Init 2 */
+
+}
+
 /* FMC initialization function */
 static void MX_FMC_Init(void)
 {
@@ -792,12 +993,17 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 
-	//Timer 6 para a temperatura interna
-	//Está configurado para 1 segundo, alterar para 2!!!!!!
+	//Está configurado para 1 segundo
 	if(htim->Instance == TIM6){
-		timer6Flag = 1;
-		play_timer--;
+		if(state == INGAME){
+			play_timer--;
+			total_time++;
+		}
 	}
+
+	if(htim->Instance == TIM7)
+		timer7Flag = 1;
+
 }
 
 void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* adcHandle){
@@ -857,6 +1063,69 @@ void LCD_Config_Start(void)
   BSP_LCD_SetTextColor(LCD_COLOR_BLACK);
   BSP_LCD_SetBackColor(LCD_COLOR_WHITE);
   BSP_LCD_SetFont(&Font24);
+}
+
+void LCD_Gameplay(void){
+
+	char string_turn[30];
+	char string_time[30];
+	draw_board();
+
+	/* LEFT SIDE - PLAYER 1*/
+
+	BSP_LCD_SetTextColor(LCD_COLOR_BLACK);
+	BSP_LCD_DrawHLine(20, 40, 160);
+	BSP_LCD_DrawVLine(20, 40, 400);
+	BSP_LCD_DrawHLine(20, 440, 160);
+	BSP_LCD_DrawVLine(180,40, 400);
+
+	BSP_LCD_SetTextColor(LCD_COLOR_RED);
+	BSP_LCD_SetBackColor(LCD_COLOR_WHITE);
+	BSP_LCD_SetFont(&Font16);
+	BSP_LCD_DisplayStringAt(30, 50, (uint8_t *)"PLAYER 1", LEFT_MODE);
+
+	BSP_LCD_SetTextColor(LCD_COLOR_BLACK);
+	BSP_LCD_SetBackColor(LCD_COLOR_WHITE);
+	BSP_LCD_SetFont(&Font16);
+	BSP_LCD_DisplayStringAt(30, 80, (uint8_t *)"SCORE: ", LEFT_MODE);
+
+
+	/* RIGHT SIDE - PLAYER 2*/
+
+	BSP_LCD_DrawHLine(620, 40, 160);
+	BSP_LCD_DrawVLine(620, 40, 400);
+	BSP_LCD_DrawHLine(620, 440, 160);
+	BSP_LCD_DrawVLine(780,40, 400);
+
+	BSP_LCD_SetTextColor(LCD_COLOR_GREEN);
+	BSP_LCD_SetBackColor(LCD_COLOR_WHITE);
+	BSP_LCD_SetFont(&Font16);
+	BSP_LCD_DisplayStringAt(630, 50, (uint8_t *)"PLAYER 2", LEFT_MODE);
+
+	BSP_LCD_SetTextColor(LCD_COLOR_BLACK);
+	BSP_LCD_SetBackColor(LCD_COLOR_WHITE);
+	BSP_LCD_SetFont(&Font16);
+	BSP_LCD_DisplayStringAt(630, 80, (uint8_t *)"SCORE: ", LEFT_MODE);
+
+
+	/* CENTER MODE */
+
+	BSP_LCD_SetTextColor(LCD_COLOR_BLACK);
+	BSP_LCD_FillRect(0, 0, BSP_LCD_GetXSize(), 30);
+	BSP_LCD_SetTextColor(LCD_COLOR_WHITE);
+	BSP_LCD_SetBackColor(LCD_COLOR_BLACK);
+	BSP_LCD_SetFont(&Font16);
+	sprintf(string_time, "TOTAL ELAPSED TIME: %d",total_time);
+	BSP_LCD_DisplayStringAt(0, 10, (uint8_t *)string_time, CENTER_MODE);
+
+	BSP_LCD_SetTextColor(LCD_COLOR_BLACK);
+	BSP_LCD_FillRect(0, 460, BSP_LCD_GetXSize(), 30);
+	BSP_LCD_SetTextColor(LCD_COLOR_WHITE);
+	BSP_LCD_SetBackColor(LCD_COLOR_BLACK);
+	BSP_LCD_SetFont(&Font16);
+	sprintf(string_turn, "YOUR TURN ENDS IN: %d",play_timer);
+	BSP_LCD_DisplayStringAt(0, 460, (uint8_t *)string_turn, CENTER_MODE);
+
 }
 
 /* USER CODE END 4 */
