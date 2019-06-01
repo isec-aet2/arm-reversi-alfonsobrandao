@@ -195,7 +195,7 @@ void show_temperature(states state) {
 		hadc1ConvertedValue = ((((hadc1Value * VREF) / MAX_CONVERTED_VALUE)
 				- VSENS_AT_AMBIENT_TEMP) * 10 / AVG_SLOPE) + AMBIENT_TEMP;
 	}
-	if (state == SINGLEPLAYER || state == MULTIPLAYER || state == RULES) {
+	if (state == SINGLEPLAYER || state == MULTIPLAYER || state == RULES || state = WAIT_FOR_TOUCH) {
 		BSP_LCD_SetTextColor(LCD_COLOR_WHITE);
 		BSP_LCD_SetBackColor(LCD_COLOR_BLACK);
 	} else {
@@ -574,8 +574,22 @@ void update_board(void) {
 }
 
 void update_scores(int player1_score, int player2_score) {
-	// Escreve no display os scores
 
+	char p1_score[3], p2_score[3];
+
+	/* SCORE DO PLAYER 1*/
+	BSP_LCD_SetTextColor(LCD_COLOR_BLACK);
+	BSP_LCD_SetBackColor(LCD_COLOR_WHITE);
+	BSP_LCD_SetFont(&Font24);
+	sprintf(p1_score," %d", player1_score);
+	BSP_LCD_DisplayStringAt(30, 140, (uint8_t *) p1_score, LEFT_MODE);
+
+	/* SCORE DO PLAYER 2*/
+	BSP_LCD_SetTextColor(LCD_COLOR_BLACK);
+	BSP_LCD_SetBackColor(LCD_COLOR_WHITE);
+	BSP_LCD_SetFont(&Font24);
+	sprintf(p2_score, " %d", player2_score);
+	BSP_LCD_DisplayStringAt(630, 140, (uint8_t *) p2_score, LEFT_MODE);
 }
 
 void get_scores(int *empty_cells, int *player1_score, int *player2_score) {
@@ -608,31 +622,38 @@ void get_scores(int *empty_cells, int *player1_score, int *player2_score) {
 	}
 }
 
-void LCD_Config_WinPanel(int player, int player_score){
+void LCD_Config_WinPanel(int player, int player_score) {
 
+	char score_string[3];
+	char player_string[20];
+
+	//Limpa ecrã
 	BSP_LCD_Clear(LCD_COLOR_WHITE);
 
-	// Desenhar antes o que é comum aos dois
+	BSP_LCD_SetTextColor(LCD_COLOR_BLACK);
+	BSP_LCD_FillRect(0, 0, BSP_LCD_GetXSize(), BSP_LCD_GetYSize());
 
-	//ESCREVE WINNER NO CENTRO DO ECRÃ A BRANCO
+	BSP_LCD_SetTextColor(LCD_COLOR_WHITE);
+	BSP_LCD_SetBackColor(LCD_COLOR_BLACK);
+	BSP_LCD_SetFont(&Font24);
+	BSP_LCD_DisplayStringAt(0, 240, (uint8_t *) "WINNER!", CENTER_MODE);
 
-	//ESCREVE O SCORE
-	if(player_score == 65){
-		//Desenhar KO;
+	BSP_LCD_SetFont(&Font16);
+	if (player_score == 65) {
+		BSP_LCD_DisplayStringAt(0, 320, (uint8_t *) "K.O.", CENTER_MODE);
+	}
+	else {
+
+		if (player == PLAYER1)
+			BSP_LCD_SetTextColor(LCD_COLOR_RED);
+		else
+			BSP_LCD_SetTextColor(LCD_COLOR_GREEN);
 	}
 
-	// Desenhar depois os específicos de cada um
-	if(player == PLAYER1){
-		//ESCREVE O NOME DO PLAYER
-		//COR VERMELHA
-	}
-	else{
-		//ESCREVE O NOME DO PLAYER
-		//COR VERDE
-	}
-	//DESENHAR CIRCULOS
-
-
+	sprintf(player_string, "PLAYER%d", player);
+	BSP_LCD_DisplayStringAt(0, 270, (uint8_t *) player_string, CENTER_MODE);
+	sprintf(score_string, " %d", player_score);
+	BSP_LCD_DisplayStringAt(0, 300, (uint8_t *) score_string, CENTER_MODE);
 }
 
 void computer_stamp_play(void) {
@@ -645,6 +666,7 @@ void computer_stamp_play(void) {
 	}
 
 	else {
+		//BSP_LED_Off(LED_RED);
 		BSP_LED_On(LED_GREEN);
 		player = PLAYER2;
 	}
@@ -658,7 +680,6 @@ void computer_stamp_play(void) {
 				if (validate_play(i, j, player, 0)) {
 					N_possible_plays++;
 				}
-
 			}
 		}
 
@@ -685,14 +706,16 @@ void computer_stamp_play(void) {
 						num_plays++;
 						play_timer = 20;
 						player2_passed = 0;
+						BSP_LED_Off(LED_GREEN);
+						BSP_LED_Off(LED_RED);
 						return;
 					}
 				}
-
 			}
 		}
+	}
 
-	} else {
+	else {
 
 		BSP_LED_Off(LED_GREEN);
 		BSP_LED_Off(LED_RED);
@@ -779,7 +802,54 @@ int main(void) {
 
 		case SINGLEPLAYER:
 			//SINGLE PLAYER MODE
-			if (screen_refresh) {
+			if (screen_refresh) {	//Flag para novo jogo
+				while (!timer_1s);
+				timer_1s = 0;
+
+				BSP_LCD_Clear(LCD_COLOR_WHITE);
+
+				init_board();
+
+				play_timer = 20;
+				total_time = 0;
+				LCD_Update_Timers();
+
+				LCD_Gameplay();
+				update_board();
+
+				screen_refresh = 0;
+			}
+			if (timer_1s) {		//Flag para mostragem do timer
+				LCD_Update_Timers();
+				timer_1s = 0;
+			}
+			singleplayer_stamp_play();
+			computer_stamp_play();
+
+			get_scores(&empty_cells, &player1_score, &player2_score);
+
+			update_scores(player1_score, player2_score);
+
+			if ((empty_cells == 0) || (player1_score == 0)
+					|| (player2_score == 0)) {					//Fim de casa livres || jogadas disponíveis
+
+				save_2_sdcard(player1_score, player2_score);
+
+				//Mostrar Ecra da Vitoria
+
+				if (player1_score > player2_score)
+					LCD_Config_WinPanel(PLAYER1, player1_score);
+				else
+					LCD_Config_WinPanel(PLAYER2, player2_score);
+
+				state = WAIT_FOR_TOUCH;
+			}
+
+			break;
+
+		case MULTIPLAYER:
+			//MULTIPLAYER MODE
+			if (screen_refresh) {		//Flag para novo jogo
 				while (!timer_1s);
 				timer_1s = 0;
 
@@ -800,59 +870,7 @@ int main(void) {
 				LCD_Update_Timers();
 				timer_1s = 0;
 			}
-			singleplayer_stamp_play();
-			computer_stamp_play();
-
-			get_scores(&empty_cells, &player1_score, &player2_score);
-
-			update_scores(player1_score, player2_score);
-			if ((empty_cells == 0) || (player1_score == 0)
-					|| (player2_score == 0)) {
-				// Não há mais casas ou um jogador ficou sem peças
-
-				// guardar no SD
-				save_2_sdcard(player1_score, player2_score);
-
-				// Mostrar Ecra da Vitoria
-				if (player1_score > player2_score)	// ganhou o player 1
-					LCD_Config_WinPanel(PLAYER1, player1_score);
-				else
-					// ganhou player 2 (ou empate)
-					LCD_Config_WinPanel(PLAYER2, player2_score);
-
-				//VOLTAR PARA MENU
-				state = WAIT_FOR_TOUCH;
-			}
-
-			break;
-
-		case MULTIPLAYER:
-			//MULTIPLAYER MODE
-			if (screen_refresh) {
-				while (!timer_1s)
-					;
-				timer_1s = 0;
-
-				BSP_LCD_Clear(LCD_COLOR_WHITE);
-
-				init_board();
-
-				play_timer = 20;
-				total_time = 0;
-				LCD_Update_Timers();
-
-				LCD_Gameplay();
-				update_board();
-
-				screen_refresh = 0;
-			}
-			if (timer_1s) {
-				LCD_Update_Timers();
-				timer_1s = 0;
-			}
 			stamp_play();
-
-
 
 			get_scores(&empty_cells, &player1_score, &player2_score);
 
