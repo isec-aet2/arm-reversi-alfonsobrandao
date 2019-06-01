@@ -28,13 +28,14 @@
 #include <stdbool.h>
 #include "stm32f769i_discovery.h"
 #include "stm32f769i_discovery_ts.h"
+#include "time.h"
 
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
 typedef enum {
-	MENU, SINGLEPLAYER, MULTIPLAYER, SCORES, RULES
+	MENU, SINGLEPLAYER, MULTIPLAYER, SCORES, RULES, WAIT_FOR_TOUCH
 } states;
 
 /* USER CODE END PTD */
@@ -50,6 +51,7 @@ typedef enum {
 #define BOARD_SIZE				 8
 #define PLAYER1					 1
 #define PLAYER2					 2
+#define MAX_PASSED_PLAYS		 3
 
 /* USER CODE END PD */
 
@@ -87,6 +89,10 @@ char tempString[100];						//String a ser enviada para o ecrã
 int total_time = 0;
 int play_timer = 20;
 int num_plays = 0;
+int player1_passed = 0, player2_passed = 0;
+
+int board[BOARD_SIZE][BOARD_SIZE] = { { 0 } };//METER PLAYER 1 com 1 e PLAYER 2 com o 2
+
 bool blue_button = 0;
 //NO FIM PARA MOSTRAR O NUMERO DE JOGADAS, SUBTRAIR 2 PARA BATER CERTO
 TS_StateTypeDef TS_State;
@@ -112,12 +118,15 @@ void LCD_Update_Timers(void);
 void show_temperature(states);
 void draw_board(void);
 void stamp_play(void);
+void computer_stamp_play(void);
 void init_board(void);
-void save_2_sdcard(void);
-bool validate_play(int cell_lin, int cell_col, int player);
+void save_2_sdcard(int player1_score, int player2_score);
+bool validate_play(int cell_lin, int cell_col, int player, bool flip);
 void update_board(void);
-int board[BOARD_SIZE][BOARD_SIZE] = { {0} };//METER PLAYER 1 com 1 e PLAYER 2 com o 2
-int valid_plays[BOARD_SIZE][BOARD_SIZE] = { 0 };
+void get_scores(int *empty_cells, int *player1_score, int *player2_score);
+void update_scores(int player1_score, int player2_score);
+void LCD_Config_WinPanel(int player, int player_score);
+
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -144,7 +153,7 @@ void LCD_Update_Timers(void) {
 	BSP_LCD_DisplayStringAt(0, 460, (uint8_t *) string_turn, CENTER_MODE);
 }
 
-void save_2_sdcard(void) {
+void save_2_sdcard(int player1_score, int player2_score) {
 
 	unsigned int nBytes = 0;
 	char string[20];
@@ -210,7 +219,7 @@ void draw_board(void) {
 	}
 }
 
-bool validate_play(int cell_lin, int cell_col, int player) {
+bool validate_play(int cell_lin, int cell_col, int player, bool flip) {
 
 	int i = 0, j = 0;
 	bool valid = 0, valid_play = 0;
@@ -228,14 +237,13 @@ bool validate_play(int cell_lin, int cell_col, int player) {
 				break;
 			else
 				valid = 1;
-		} else {
-			if (board[i][j] == player) {
+		} else if (board[i][j] == player) {
+			if (flip)
 				for (int k = cell_lin - 1, x = cell_col - 1; k > i && x > j;
-						k--, x--) {
+						k--, x--)
 					board[k][x] = player;
-					valid_play = 1;
-				}
-			}
+			valid_play = 1;
+
 		}
 	}
 
@@ -249,12 +257,12 @@ bool validate_play(int cell_lin, int cell_col, int player) {
 				break;
 			else
 				valid = 1;
-		} else {
-			if (board[i][j] == player)
-				for (int k = cell_lin - 1; k > i; k--) {
+		} else if (board[i][j] == player) {
+			if (flip)
+				for (int k = cell_lin - 1; k > i; k--)
 					board[k][j] = player;
-					valid_play = 1;
-				}
+			valid_play = 1;
+
 		}
 	}
 
@@ -269,13 +277,13 @@ bool validate_play(int cell_lin, int cell_col, int player) {
 				break;
 			else
 				valid = 1;
-		} else {
-			if (board[i][j] == player)
+		} else if (board[i][j] == player) {
+			if (flip)
 				for (int k = cell_lin - 1, x = cell_col + 1; k > i && x < j;
-						k--, x++) {
+						k--, x++)
 					board[k][x] = player;
-					valid_play = 1;
-				}
+			valid_play = 1;
+
 		}
 
 	}
@@ -290,12 +298,12 @@ bool validate_play(int cell_lin, int cell_col, int player) {
 				break;
 			else
 				valid = 1;
-		} else {
-			if (board[i][j] == player)
-				for (int x = cell_col + 1; x < j; x++) {
+		} else if (board[i][j] == player) {
+			if (flip)
+				for (int x = cell_col + 1; x < j; x++)
 					board[i][x] = player;
-					valid_play = 1;
-				}
+			valid_play = 1;
+
 		}
 	}
 
@@ -310,13 +318,13 @@ bool validate_play(int cell_lin, int cell_col, int player) {
 				break;
 			else
 				valid = 1;
-		} else {
-			if (board[i][j] == player)
+		} else if (board[i][j] == player) {
+			if (flip)
 				for (int k = cell_lin + 1, x = cell_col + 1; k < i && x < j;
-						k++, x++) {
+						k++, x++)
 					board[k][x] = player;
-					valid_play=1;
-				}
+			valid_play = 1;
+
 		}
 	}
 
@@ -330,12 +338,12 @@ bool validate_play(int cell_lin, int cell_col, int player) {
 				break;
 			else
 				valid = 1;
-		} else {
-			if (board[i][j] == player)
-				for (int k = cell_lin + 1; k < i; k++) {
+		} else if (board[i][j] == player) {
+			if (flip)
+				for (int k = cell_lin + 1; k < i; k++)
 					board[k][j] = player;
-					valid_play=1;
-				}
+			valid_play = 1;
+
 		}
 	}
 
@@ -350,13 +358,13 @@ bool validate_play(int cell_lin, int cell_col, int player) {
 				break;
 			else
 				valid = 1;
-		} else {
-			if (board[i][j] == player)
+		} else if (board[i][j] == player) {
+			if (flip)
 				for (int k = cell_lin + 1, x = cell_col - 1; k < i && x > j;
-						k++, x--) {
+						k++, x--)
 					board[k][x] = player;
-					valid_play=1;
-				}
+			valid_play = 1;
+
 		}
 	}
 
@@ -364,20 +372,18 @@ bool validate_play(int cell_lin, int cell_col, int player) {
 	valid = 0;
 	for (i = cell_lin, j = cell_col - 1; j >= 0; j--) {
 		if (!valid) {
-			if (!valid) {
-				if (board[i][j] == '.')
-					break;
-				else if (board[i][j] == player)
-					break;
-				else
-					valid = 1;
-			} else {
-				if (board[i][j] == player)
-					for (int x = cell_col - 1; x > j; x--) {
-						board[i][x] = player;
-						valid_play=1;
-					}
-			}
+			if (board[i][j] == '.')
+				break;
+			else if (board[i][j] == player)
+				break;
+			else
+				valid = 1;
+		} else if (board[i][j] == player) {
+			if (flip)
+				for (int x = cell_col - 1; x > j; x--)
+					board[i][x] = player;
+			valid_play = 1;
+
 		}
 	}
 	return valid_play;
@@ -385,9 +391,10 @@ bool validate_play(int cell_lin, int cell_col, int player) {
 }
 
 
+
 void stamp_play(void) {
 
-	int player;
+	int player, N_possible_plays = 0;
 
 	int cell_lin, cell_col;
 
@@ -401,6 +408,18 @@ void stamp_play(void) {
 		player = PLAYER2;
 	}
 
+	for (int i = 0; i < BOARD_SIZE; i++) {
+		for (int j = 0; j < BOARD_SIZE; j++) {
+			if (validate_play(i, j, player, 0)) {
+				N_possible_plays++;
+			}
+
+		}
+	}
+
+	if (N_possible_plays == 0)
+		play_timer = 0;
+
 	if (play_timer > 0) {
 
 		if (tsFlag == 1) {
@@ -413,7 +432,7 @@ void stamp_play(void) {
 				cell_lin = (TS_State.touchX[0] - 200) / 50;
 				cell_col = (TS_State.touchY[0] - 40) / 50;
 
-				if (validate_play(cell_lin, cell_col, player)) {//SE A JOGADA FOR V�?LIDA
+				if (validate_play(cell_lin, cell_col, player, 1)) {	//SE A JOGADA FOR V�?LIDA
 					board[cell_lin][cell_col] = player;
 
 					update_board();
@@ -425,6 +444,10 @@ void stamp_play(void) {
 
 					num_plays++;
 					play_timer = 20;
+					if (num_plays % 2 == 0)
+						player1_passed = 0;
+					else
+						player2_passed = 0;
 					return;
 				} else
 					return;
@@ -435,14 +458,96 @@ void stamp_play(void) {
 		BSP_LED_Off(LED_GREEN);
 		BSP_LED_Off(LED_RED);
 		num_plays++;
+		if (num_plays % 2 == 0)
+			player1_passed++;
+		else
+			player2_passed++;
+
+		play_timer = 20;
+		return;
+	}
+}
+
+void singleplayer_stamp_play(void) {
+
+	int player, N_possible_plays = 0;
+
+	int cell_lin, cell_col;
+
+	if (num_plays % 2 == 0) {
+		BSP_LED_On(LED_RED);
+		player = PLAYER1;
+	}
+
+	else {
+		BSP_LED_On(LED_GREEN);
+		player = PLAYER2;
+	}
+
+	if(player == PLAYER2) // UNICA DIFERENÇA DO stamp_play()
+			return;
+
+	for (int i = 0; i < BOARD_SIZE; i++) {
+		for (int j = 0; j < BOARD_SIZE; j++) {
+			if (validate_play(i, j, player, 0)) {
+				N_possible_plays++;
+			}
+
+		}
+	}
+
+	if (N_possible_plays == 0)
+		play_timer = 0;
+
+	if (play_timer > 0) {
+
+		if (tsFlag == 1) {
+
+			tsFlag = 0;
+
+			if (TS_State.touchX[0] > 200 && TS_State.touchX[0] < 600
+					&& TS_State.touchY[0] > 40 && TS_State.touchY[0] < 440) {//SE ESTIVER DENTRO DA BOARD
+
+				cell_lin = (TS_State.touchX[0] - 200) / 50;
+				cell_col = (TS_State.touchY[0] - 40) / 50;
+
+				if (validate_play(cell_lin, cell_col, player, 1)) {	//SE A JOGADA FOR V�?LIDA
+					board[cell_lin][cell_col] = player;
+
+					update_board();
+
+					TS_State.touchX[0] = 0;
+					TS_State.touchY[0] = 0;
+					BSP_LED_Off(LED_RED);
+					BSP_LED_Off(LED_GREEN);
+
+					num_plays++;
+					play_timer = 20;
+					if (num_plays % 2 == 0)
+						player1_passed = 0;
+					else
+						player2_passed = 0;
+					return;
+				} else
+					return;
+			}
+		}
+	} else {
+
+		BSP_LED_Off(LED_GREEN);
+		BSP_LED_Off(LED_RED);
+		num_plays++;
+		if (num_plays % 2 == 0)
+			player1_passed++;
+		else
+			player2_passed++;
+
 		play_timer = 20;
 		return;
 	}
 }
 
 void update_board(void) {
-
-	// Flipping das peças
 
 	// Apagar Circulos
 
@@ -468,6 +573,139 @@ void update_board(void) {
 	}
 }
 
+void update_scores(int player1_score, int player2_score) {
+	// Escreve no display os scores
+
+}
+
+void get_scores(int *empty_cells, int *player1_score, int *player2_score) {
+
+	*empty_cells = 0;
+	*player1_score = 0;
+	*player2_score = 0;
+
+	if (player1_passed == MAX_PASSED_PLAYS) {
+		*player1_score = 0;
+		*player2_score = 65;
+		return;
+	}
+	if (player2_passed == MAX_PASSED_PLAYS) {
+		*player1_score = 65;
+		*player2_score = 0;
+		return;
+	}
+
+	for (int i = 0; i < BOARD_SIZE; i++) {
+		for (int j = 0; j < BOARD_SIZE; j++) {
+
+			if (board[i][j] == '.')
+				(*empty_cells)++;
+			else if (board[i][j] == PLAYER1)
+				(*player1_score)++;
+			else if (board[i][j] == PLAYER2)
+				(*player2_score)++;
+		}
+	}
+}
+
+void LCD_Config_WinPanel(int player, int player_score){
+
+	BSP_LCD_Clear(LCD_COLOR_WHITE);
+
+	// Desenhar antes o que é comum aos dois
+
+	//ESCREVE WINNER NO CENTRO DO ECRÃ A BRANCO
+
+	//ESCREVE O SCORE
+	if(player_score == 65){
+		//Desenhar KO;
+	}
+
+	// Desenhar depois os específicos de cada um
+	if(player == PLAYER1){
+		//ESCREVE O NOME DO PLAYER
+		//COR VERMELHA
+	}
+	else{
+		//ESCREVE O NOME DO PLAYER
+		//COR VERDE
+	}
+	//DESENHAR CIRCULOS
+
+
+}
+
+void computer_stamp_play(void) {
+
+	int player, N_possible_plays = 0, possible_play = 0;
+
+	if (num_plays % 2 == 0) {
+		BSP_LED_On(LED_RED);
+		player = PLAYER1;
+	}
+
+	else {
+		BSP_LED_On(LED_GREEN);
+		player = PLAYER2;
+	}
+
+	if(player == PLAYER1)
+		return;
+
+	if (play_timer > 0) {
+		for (int i = 0; i < BOARD_SIZE; i++) {
+			for (int j = 0; j < BOARD_SIZE; j++) {
+				if (validate_play(i, j, player, 0)) {
+					N_possible_plays++;
+				}
+
+			}
+		}
+
+		if(N_possible_plays == 0){
+			BSP_LED_Off(LED_GREEN);
+			BSP_LED_On(LED_RED);
+			num_plays++;
+			player2_passed++;
+			play_timer = 20;
+			return;
+		}
+
+		srand(time(NULL));
+		int random_play = rand() % N_possible_plays + 1;
+
+		for (int i = 0; i < BOARD_SIZE; i++) {
+			for (int j = 0; j < BOARD_SIZE; j++) {
+				if (validate_play(i, j, player, 0)) {
+					possible_play++;
+					if (possible_play == random_play) {
+						validate_play(i, j, player, 1);
+						board[i][j] = player;
+						update_board();
+						num_plays++;
+						play_timer = 20;
+						player2_passed = 0;
+						return;
+					}
+				}
+
+			}
+		}
+
+	} else {
+
+		BSP_LED_Off(LED_GREEN);
+		BSP_LED_Off(LED_RED);
+		num_plays++;
+		if (num_plays % 2 == 0)
+			player1_passed++;
+		else
+			player2_passed++;
+
+		play_timer = 20;
+		return;
+	}
+}
 /* USER CODE END 0 */
 
 /**
@@ -477,7 +715,6 @@ void update_board(void) {
 int main(void) {
 	/* USER CODE BEGIN 1 */
 	//states state = MENU;
-
 	/* USER CODE END 1 */
 
 	/* Enable I-Cache---------------------------------------------------------*/
@@ -524,10 +761,10 @@ int main(void) {
 	LCD_Config_Start();
 	init_board();
 
-	save_2_sdcard();
-
 	states state = MENU;
 	char screen_refresh;
+
+	int empty_cells, player1_score, player2_score;
 
 	/* USER CODE END 2 */
 
@@ -563,21 +800,42 @@ int main(void) {
 				LCD_Update_Timers();
 				timer_1s = 0;
 			}
-			stamp_play();
+			singleplayer_stamp_play();
+			computer_stamp_play();
 
-			// Verificar se o tabuleiro está cheio
-			// Se sim guradar no SD
-			// Mostrar Ecra da Vitoria
-			// Clicar para voltar
+			get_scores(&empty_cells, &player1_score, &player2_score);
+
+			update_scores(player1_score, player2_score);
+			if ((empty_cells == 0) || (player1_score == 0)
+					|| (player2_score == 0)) {
+				// Não há mais casas ou um jogador ficou sem peças
+
+				// guardar no SD
+				save_2_sdcard(player1_score, player2_score);
+
+				// Mostrar Ecra da Vitoria
+				if (player1_score > player2_score)	// ganhou o player 1
+					LCD_Config_WinPanel(PLAYER1, player1_score);
+				else
+					// ganhou player 2 (ou empate)
+					LCD_Config_WinPanel(PLAYER2, player2_score);
+
+				//VOLTAR PARA MENU
+				state = WAIT_FOR_TOUCH;
+			}
+
 			break;
 
 		case MULTIPLAYER:
 			//MULTIPLAYER MODE
 			if (screen_refresh) {
-				while (!timer_1s);
+				while (!timer_1s)
+					;
 				timer_1s = 0;
 
 				BSP_LCD_Clear(LCD_COLOR_WHITE);
+
+				init_board();
 
 				play_timer = 20;
 				total_time = 0;
@@ -593,6 +851,30 @@ int main(void) {
 				timer_1s = 0;
 			}
 			stamp_play();
+
+
+
+			get_scores(&empty_cells, &player1_score, &player2_score);
+
+			update_scores(player1_score, player2_score);
+			if ((empty_cells == 0) || (player1_score == 0)
+					|| (player2_score == 0)) {
+				// Não há mais casas ou um jogador ficou sem peças
+
+				// guardar no SD
+				save_2_sdcard(player1_score, player2_score);
+
+				// Mostrar Ecra da Vitoria
+				if (player1_score > player2_score)	// ganhou o player 1
+					LCD_Config_WinPanel(PLAYER1, player1_score);
+				else
+					// ganhou player 2 (ou empate)
+					LCD_Config_WinPanel(PLAYER2, player2_score);
+
+				//VOLTAR PARA MENU
+				state = WAIT_FOR_TOUCH;
+			}
+
 			break;
 
 		case SCORES:
@@ -601,11 +883,14 @@ int main(void) {
 
 		case RULES:
 			//RULES
-			if (screen_refresh) {
-				BSP_LCD_Clear(LCD_COLOR_WHITE);
-				LCD_Config_Rules();
-				screen_refresh = 0;
-			}
+			BSP_LCD_Clear(LCD_COLOR_WHITE);
+			LCD_Config_Rules();
+			screen_refresh = 0;
+
+			state = WAIT_FOR_TOUCH;
+			break;
+
+		case WAIT_FOR_TOUCH:
 			if (tsFlag == 1) {
 				tsFlag = 0;
 				LCD_Config_Start();
@@ -615,7 +900,7 @@ int main(void) {
 
 		case MENU:
 
-			if (tsFlag == 1 && touchXvalue != 0 && touchXvalue != 0) {
+			if (tsFlag == 1 && touchXvalue != 0 && touchYvalue != 0) {
 
 				tsFlag = 0;
 
@@ -635,7 +920,6 @@ int main(void) {
 				}
 
 				else if (touchXvalue > 600 && touchXvalue <= 800) {
-					screen_refresh = 1;
 					state = RULES;
 				}
 			}
@@ -1177,10 +1461,11 @@ static void MX_GPIO_Init(void) {
 /* USER CODE BEGIN 4 */
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
 
-	//Vai buscar os valores de X e Y
+//Vai buscar os valores de X e Y
 	if (GPIO_Pin == GPIO_PIN_13 && touch_timer) {
 		tsFlag = 1;
 		touch_timer = 0;
+
 		BSP_TS_GetState(&TS_State);
 		touchXvalue = (int) TS_State.touchX[0];
 		touchYvalue = (int) TS_State.touchY[0];
@@ -1192,7 +1477,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 
-	//Está configurado para 1 segundo
+//Está configurado para 1 segundo
 	if (htim->Instance == TIM6) {
 		play_timer--;
 		total_time++;
@@ -1208,7 +1493,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 
 void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* adcHandle) {
 
-	//ADC da temperatura
+//ADC da temperatura
 	if (adcHandle == &hadc1) {
 		hadc1Value = HAL_ADC_GetValue(&hadc1);
 	}
