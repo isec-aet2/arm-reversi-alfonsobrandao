@@ -6,8 +6,7 @@
  ******************************************************************************
  * @attention
  *
- * TO DO LIST:
- *			* GOAL 2: DESENHAR O MAPA DE JOGO
+ *
  *
  *
  *
@@ -133,6 +132,7 @@ void LCD_Config_WinPanel(int player, int player_score);
 /* USER CODE BEGIN 0 */
 
 void LCD_Update_Timers(void) {
+
 	char string_turn[30];
 	char string_time[30];
 
@@ -156,7 +156,7 @@ void LCD_Update_Timers(void) {
 void save_2_sdcard(int player1_score, int player2_score) {
 
 	unsigned int nBytes = 0;
-	char string[20];
+	char string1[20], string2[20];
 
 	if (f_mount(&SDFatFS, SDPath, 0) != FR_OK)
 		Error_Handler();
@@ -164,9 +164,12 @@ void save_2_sdcard(int player1_score, int player2_score) {
 	if (f_open(&SDFile, "reversi.txt", FA_WRITE | FA_CREATE_ALWAYS) != FR_OK)
 		Error_Handler();
 
-	sprintf(string, "PLAYER1");
+	sprintf(string1, "PLAYER1 - %d", player1_score);
+	sprintf(string2, "PLAYER2 - %d", player2_score);
 
-	if (f_write(&SDFile, string, strlen(string), &nBytes) != FR_OK)
+	if (f_write(&SDFile, string1, strlen(string1), &nBytes) != FR_OK)
+		Error_Handler();
+	if (f_write(&SDFile, string2, strlen(string2), &nBytes) != FR_OK)
 		Error_Handler();
 
 	f_close(&SDFile);
@@ -188,6 +191,8 @@ void init_board(void) {
 
 void show_temperature(states state) {
 
+	/* Mostra a temperatura, mas apenas a atualiza de 2 em 2 segundos */
+
 	if (timer7Flag == 1) {
 
 		timer7Flag = 0;
@@ -195,7 +200,7 @@ void show_temperature(states state) {
 		hadc1ConvertedValue = ((((hadc1Value * VREF) / MAX_CONVERTED_VALUE)
 				- VSENS_AT_AMBIENT_TEMP) * 10 / AVG_SLOPE) + AMBIENT_TEMP;
 	}
-	if (state == SINGLEPLAYER || state == MULTIPLAYER || state == RULES || state = WAIT_FOR_TOUCH) {
+	if (state == SINGLEPLAYER || state == MULTIPLAYER || state == RULES || state == WAIT_FOR_TOUCH) {
 		BSP_LCD_SetTextColor(LCD_COLOR_WHITE);
 		BSP_LCD_SetBackColor(LCD_COLOR_BLACK);
 	} else {
@@ -243,7 +248,6 @@ bool validate_play(int cell_lin, int cell_col, int player, bool flip) {
 						k--, x--)
 					board[k][x] = player;
 			valid_play = 1;
-
 		}
 	}
 
@@ -262,7 +266,6 @@ bool validate_play(int cell_lin, int cell_col, int player, bool flip) {
 				for (int k = cell_lin - 1; k > i; k--)
 					board[k][j] = player;
 			valid_play = 1;
-
 		}
 	}
 
@@ -283,9 +286,7 @@ bool validate_play(int cell_lin, int cell_col, int player, bool flip) {
 						k--, x++)
 					board[k][x] = player;
 			valid_play = 1;
-
 		}
-
 	}
 
 	//Right Horizontal
@@ -303,7 +304,6 @@ bool validate_play(int cell_lin, int cell_col, int player, bool flip) {
 				for (int x = cell_col + 1; x < j; x++)
 					board[i][x] = player;
 			valid_play = 1;
-
 		}
 	}
 
@@ -324,7 +324,6 @@ bool validate_play(int cell_lin, int cell_col, int player, bool flip) {
 						k++, x++)
 					board[k][x] = player;
 			valid_play = 1;
-
 		}
 	}
 
@@ -343,7 +342,6 @@ bool validate_play(int cell_lin, int cell_col, int player, bool flip) {
 				for (int k = cell_lin + 1; k < i; k++)
 					board[k][j] = player;
 			valid_play = 1;
-
 		}
 	}
 
@@ -364,7 +362,6 @@ bool validate_play(int cell_lin, int cell_col, int player, bool flip) {
 						k++, x--)
 					board[k][x] = player;
 			valid_play = 1;
-
 		}
 	}
 
@@ -383,7 +380,6 @@ bool validate_play(int cell_lin, int cell_col, int player, bool flip) {
 				for (int x = cell_col - 1; x > j; x--)
 					board[i][x] = player;
 			valid_play = 1;
-
 		}
 	}
 	return valid_play;
@@ -398,6 +394,7 @@ void stamp_play(void) {
 
 	int cell_lin, cell_col;
 
+	/* Check player's turn */
 	if (num_plays % 2 == 0) {
 		BSP_LED_On(LED_RED);
 		player = PLAYER1;
@@ -408,31 +405,35 @@ void stamp_play(void) {
 		player = PLAYER2;
 	}
 
+
+	/* Check the number of possible plays */
 	for (int i = 0; i < BOARD_SIZE; i++) {
 		for (int j = 0; j < BOARD_SIZE; j++) {
 			if (validate_play(i, j, player, 0)) {
 				N_possible_plays++;
 			}
-
 		}
 	}
 
 	if (N_possible_plays == 0)
 		play_timer = 0;
 
+	/* If there's play time left */
 	if (play_timer > 0) {
 
 		if (tsFlag == 1) {
 
 			tsFlag = 0;
 
+			/* If the desired play is inside the board game*/
 			if (TS_State.touchX[0] > 200 && TS_State.touchX[0] < 600
-					&& TS_State.touchY[0] > 40 && TS_State.touchY[0] < 440) {//SE ESTIVER DENTRO DA BOARD
+					&& TS_State.touchY[0] > 40 && TS_State.touchY[0] < 440) {
 
 				cell_lin = (TS_State.touchX[0] - 200) / 50;
 				cell_col = (TS_State.touchY[0] - 40) / 50;
 
-				if (validate_play(cell_lin, cell_col, player, 1)) {	//SE A JOGADA FOR V�?LIDA
+				/* Check if the play is valid */
+				if (validate_play(cell_lin, cell_col, player, 1)) {
 					board[cell_lin][cell_col] = player;
 
 					update_board();
@@ -444,20 +445,27 @@ void stamp_play(void) {
 
 					num_plays++;
 					play_timer = 20;
+
+					/* Check for player turn and reset his number of passed plays */
 					if (num_plays % 2 == 0)
 						player1_passed = 0;
 					else
 						player2_passed = 0;
 					return;
+
 				} else
 					return;
 			}
 		}
+
+	/*If the play time has reached the limit */
 	} else {
 
 		BSP_LED_Off(LED_GREEN);
 		BSP_LED_Off(LED_RED);
 		num_plays++;
+
+
 		if (num_plays % 2 == 0)
 			player1_passed++;
 		else
@@ -474,6 +482,7 @@ void singleplayer_stamp_play(void) {
 
 	int cell_lin, cell_col;
 
+	/* Check for player's turn */
 	if (num_plays % 2 == 0) {
 		BSP_LED_On(LED_RED);
 		player = PLAYER1;
@@ -484,7 +493,8 @@ void singleplayer_stamp_play(void) {
 		player = PLAYER2;
 	}
 
-	if(player == PLAYER2) // UNICA DIFERENÇA DO stamp_play()
+	/* If it's Player2 turn (computer) leave this function */
+	if(player == PLAYER2)
 			return;
 
 	for (int i = 0; i < BOARD_SIZE; i++) {
@@ -492,30 +502,33 @@ void singleplayer_stamp_play(void) {
 			if (validate_play(i, j, player, 0)) {
 				N_possible_plays++;
 			}
-
 		}
 	}
 
 	if (N_possible_plays == 0)
 		play_timer = 0;
 
+	/* If there's time left to play */
 	if (play_timer > 0) {
 
 		if (tsFlag == 1) {
 
 			tsFlag = 0;
 
+			/* If there touch was inside the board, convert it */
 			if (TS_State.touchX[0] > 200 && TS_State.touchX[0] < 600
-					&& TS_State.touchY[0] > 40 && TS_State.touchY[0] < 440) {//SE ESTIVER DENTRO DA BOARD
+					&& TS_State.touchY[0] > 40 && TS_State.touchY[0] < 440) {
 
 				cell_lin = (TS_State.touchX[0] - 200) / 50;
 				cell_col = (TS_State.touchY[0] - 40) / 50;
 
-				if (validate_play(cell_lin, cell_col, player, 1)) {	//SE A JOGADA FOR V�?LIDA
+				/* Check if the play is valid */
+				if (validate_play(cell_lin, cell_col, player, 1)) {
 					board[cell_lin][cell_col] = player;
 
 					update_board();
 
+					/* Reset the variables */
 					TS_State.touchX[0] = 0;
 					TS_State.touchY[0] = 0;
 					BSP_LED_Off(LED_RED);
@@ -523,6 +536,8 @@ void singleplayer_stamp_play(void) {
 
 					num_plays++;
 					play_timer = 20;
+
+					/* Check for the player turn and reset the number of plays */
 					if (num_plays % 2 == 0)
 						player1_passed = 0;
 					else
@@ -532,11 +547,15 @@ void singleplayer_stamp_play(void) {
 					return;
 			}
 		}
+
+	/* If there's no time left to play */
 	} else {
 
 		BSP_LED_Off(LED_GREEN);
 		BSP_LED_Off(LED_RED);
 		num_plays++;
+
+		/* Check player's turn */
 		if (num_plays % 2 == 0)
 			player1_passed++;
 		else
@@ -549,13 +568,12 @@ void singleplayer_stamp_play(void) {
 
 void update_board(void) {
 
-	// Apagar Circulos
+	/* Update the LCD board in with the new values in the matrix board */
 
 	BSP_LCD_Clear(LCD_COLOR_WHITE);
 	LCD_Update_Timers();
 	LCD_Gameplay();
 
-	// Desenhar Circulos
 
 	for (int i = 0; i < BOARD_SIZE; i++) {
 		for (int j = 0; j < BOARD_SIZE; j++) {
@@ -565,6 +583,7 @@ void update_board(void) {
 			if (board[i][j] == PLAYER1) {
 				BSP_LCD_SetTextColor(LCD_COLOR_RED);
 				BSP_LCD_FillCircle(posX + 25, posY + 25, 20);
+
 			} else if (board[i][j] == PLAYER2) {
 				BSP_LCD_SetTextColor(LCD_COLOR_GREEN);
 				BSP_LCD_FillCircle(posX + 25, posY + 25, 20);
@@ -577,14 +596,14 @@ void update_scores(int player1_score, int player2_score) {
 
 	char p1_score[3], p2_score[3];
 
-	/* SCORE DO PLAYER 1*/
+	/* SCORE PLAYER 1*/
 	BSP_LCD_SetTextColor(LCD_COLOR_BLACK);
 	BSP_LCD_SetBackColor(LCD_COLOR_WHITE);
 	BSP_LCD_SetFont(&Font24);
 	sprintf(p1_score," %d", player1_score);
 	BSP_LCD_DisplayStringAt(30, 140, (uint8_t *) p1_score, LEFT_MODE);
 
-	/* SCORE DO PLAYER 2*/
+	/* SCORE PLAYER 2*/
 	BSP_LCD_SetTextColor(LCD_COLOR_BLACK);
 	BSP_LCD_SetBackColor(LCD_COLOR_WHITE);
 	BSP_LCD_SetFont(&Font24);
@@ -627,7 +646,6 @@ void LCD_Config_WinPanel(int player, int player_score) {
 	char score_string[3];
 	char player_string[20];
 
-	//Limpa ecrã
 	BSP_LCD_Clear(LCD_COLOR_WHITE);
 
 	BSP_LCD_SetTextColor(LCD_COLOR_BLACK);
@@ -639,6 +657,7 @@ void LCD_Config_WinPanel(int player, int player_score) {
 	BSP_LCD_DisplayStringAt(0, 240, (uint8_t *) "WINNER!", CENTER_MODE);
 
 	BSP_LCD_SetFont(&Font16);
+
 	if (player_score == 65) {
 		BSP_LCD_DisplayStringAt(0, 320, (uint8_t *) "K.O.", CENTER_MODE);
 	}
@@ -660,20 +679,22 @@ void computer_stamp_play(void) {
 
 	int player, N_possible_plays = 0, possible_play = 0;
 
+	/* Check player's turn to turn on his LED Color */
 	if (num_plays % 2 == 0) {
 		BSP_LED_On(LED_RED);
 		player = PLAYER1;
 	}
 
 	else {
-		//BSP_LED_Off(LED_RED);
 		BSP_LED_On(LED_GREEN);
 		player = PLAYER2;
 	}
 
+	/* If it's player 1 turn end this function */
 	if(player == PLAYER1)
 		return;
 
+	/* Coun the number of possible plays */
 	if (play_timer > 0) {
 		for (int i = 0; i < BOARD_SIZE; i++) {
 			for (int j = 0; j < BOARD_SIZE; j++) {
@@ -683,6 +704,7 @@ void computer_stamp_play(void) {
 			}
 		}
 
+		/* If there are no plays left */
 		if(N_possible_plays == 0){
 			BSP_LED_Off(LED_GREEN);
 			BSP_LED_On(LED_RED);
@@ -692,9 +714,12 @@ void computer_stamp_play(void) {
 			return;
 		}
 
+		/* Gets a random value of the play */
 		srand(time(NULL));
 		int random_play = rand() % N_possible_plays + 1;
 
+		/* Gets the number of possible plays and if it match the pretended play
+		 * save it into the matrix + validate the play. */
 		for (int i = 0; i < BOARD_SIZE; i++) {
 			for (int j = 0; j < BOARD_SIZE; j++) {
 				if (validate_play(i, j, player, 0)) {
@@ -715,6 +740,7 @@ void computer_stamp_play(void) {
 		}
 	}
 
+	/* If the time's up */
 	else {
 
 		BSP_LED_Off(LED_GREEN);
@@ -795,15 +821,14 @@ int main(void) {
 	/* USER CODE BEGIN WHILE */
 	while (1) {
 
-		//acrescentar draw_aux_table lá em cima
 		show_temperature(state);
 
 		switch (state) {
 
 		case SINGLEPLAYER:
 			//SINGLE PLAYER MODE
-			if (screen_refresh) {	//Flag para novo jogo
-				while (!timer_1s);
+			if (screen_refresh) {	//Flag for New Game
+				while (!timer_1s);	//Holds till it passes 1 sec
 				timer_1s = 0;
 
 				BSP_LCD_Clear(LCD_COLOR_WHITE);
@@ -819,7 +844,7 @@ int main(void) {
 
 				screen_refresh = 0;
 			}
-			if (timer_1s) {		//Flag para mostragem do timer
+			if (timer_1s) {		//Flag for showing timer
 				LCD_Update_Timers();
 				timer_1s = 0;
 			}
@@ -835,8 +860,6 @@ int main(void) {
 
 				save_2_sdcard(player1_score, player2_score);
 
-				//Mostrar Ecra da Vitoria
-
 				if (player1_score > player2_score)
 					LCD_Config_WinPanel(PLAYER1, player1_score);
 				else
@@ -849,8 +872,8 @@ int main(void) {
 
 		case MULTIPLAYER:
 			//MULTIPLAYER MODE
-			if (screen_refresh) {		//Flag para novo jogo
-				while (!timer_1s);
+			if (screen_refresh) {		//New Game Flag
+				while (!timer_1s);		//Holds till it pass 1 sec
 				timer_1s = 0;
 
 				BSP_LCD_Clear(LCD_COLOR_WHITE);
@@ -866,10 +889,12 @@ int main(void) {
 
 				screen_refresh = 0;
 			}
-			if (timer_1s) {
+
+			if (timer_1s) {			//Flag for showing timer
 				LCD_Update_Timers();
 				timer_1s = 0;
 			}
+
 			stamp_play();
 
 			get_scores(&empty_cells, &player1_score, &player2_score);
@@ -877,19 +902,14 @@ int main(void) {
 			update_scores(player1_score, player2_score);
 			if ((empty_cells == 0) || (player1_score == 0)
 					|| (player2_score == 0)) {
-				// Não há mais casas ou um jogador ficou sem peças
 
-				// guardar no SD
 				save_2_sdcard(player1_score, player2_score);
 
-				// Mostrar Ecra da Vitoria
-				if (player1_score > player2_score)	// ganhou o player 1
+				if (player1_score > player2_score)
 					LCD_Config_WinPanel(PLAYER1, player1_score);
 				else
-					// ganhou player 2 (ou empate)
 					LCD_Config_WinPanel(PLAYER2, player2_score);
 
-				//VOLTAR PARA MENU
 				state = WAIT_FOR_TOUCH;
 			}
 
