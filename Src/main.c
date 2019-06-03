@@ -96,8 +96,6 @@ bool blue_button = 0;
 
 TS_StateTypeDef TS_State;
 
-
-bool reset_time_flag = 0;				//Goal EXTRA
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -459,8 +457,9 @@ void stamp_play(void) {
 			}
 		}
 
+
 	/*If the play time has reached the limit */
-	} else if (play_timer == 0 && reset_time_flag == 0){			//Flag do Extra GOAL
+	} else if (play_timer == 0){			//Flag do Extra GOAL
 
 		BSP_LED_Off(LED_GREEN);
 		BSP_LED_Off(LED_RED);
@@ -475,7 +474,6 @@ void stamp_play(void) {
 		play_timer = 20;
 		return;
 	}
-	reset_time_flag = 0;											//Flag do Extra GOAL
 }
 
 void singleplayer_stamp_play(void) {
@@ -895,15 +893,6 @@ int main(void) {
 			if (timer_1s) {			//Flag for showing timer
 				LCD_Update_Timers();
 				timer_1s = 0;
-			}
-
-			if(tsFlag == 1 && touchYvalue <= 30){			//Goal EXTRA
-				tsFlag = 0;
-				play_timer = 0;
-				total_time = 0;
-
-				//Flag para não mudar de jogador.
-				reset_time_flag = 1;
 			}
 
 			stamp_play();
@@ -1518,6 +1507,11 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
 		BSP_TS_GetState(&TS_State);
 		touchXvalue = (int) TS_State.touchX[0];
 		touchYvalue = (int) TS_State.touchY[0];
+
+		if(touchYvalue <= 30 || touchYvalue >= 460){			//Goal EXTRA
+			play_timer = 20;									//Goal EXTRA
+			total_time = 0;										//Goal EXTRA
+		}
 	}
 	if (GPIO_Pin == GPIO_PIN_0) {
 		//blue_button = 1;
