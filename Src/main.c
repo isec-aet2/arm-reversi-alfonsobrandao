@@ -90,12 +90,14 @@ int play_timer = 20;
 int num_plays = 0;
 int player1_passed = 0, player2_passed = 0;
 
-int board[BOARD_SIZE][BOARD_SIZE] = { { 0 } };//METER PLAYER 1 com 1 e PLAYER 2 com o 2
+int board[BOARD_SIZE][BOARD_SIZE] = { { 0 } };
 
 bool blue_button = 0;
-//NO FIM PARA MOSTRAR O NUMERO DE JOGADAS, SUBTRAIR 2 PARA BATER CERTO
+
 TS_StateTypeDef TS_State;
 
+
+bool reset_time_flag = 0;				//Goal EXTRA
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -383,7 +385,6 @@ bool validate_play(int cell_lin, int cell_col, int player, bool flip) {
 		}
 	}
 	return valid_play;
-
 }
 
 
@@ -459,7 +460,7 @@ void stamp_play(void) {
 		}
 
 	/*If the play time has reached the limit */
-	} else {
+	} else if (play_timer == 0 && reset_time_flag == 0){			//Flag do Extra GOAL
 
 		BSP_LED_Off(LED_GREEN);
 		BSP_LED_Off(LED_RED);
@@ -474,6 +475,7 @@ void stamp_play(void) {
 		play_timer = 20;
 		return;
 	}
+	reset_time_flag = 0;											//Flag do Extra GOAL
 }
 
 void singleplayer_stamp_play(void) {
@@ -611,7 +613,7 @@ void update_scores(int player1_score, int player2_score) {
 	BSP_LCD_DisplayStringAt(630, 140, (uint8_t *) p2_score, LEFT_MODE);
 }
 
-void get_scores(int *empty_cells, int *player1_score, int *player2_score) {
+void get_scores(int *empty_cells, int *player1_score, int *player2_score) {		//Goal EXTRA
 
 	*empty_cells = 0;
 	*player1_score = 0;
@@ -893,6 +895,15 @@ int main(void) {
 			if (timer_1s) {			//Flag for showing timer
 				LCD_Update_Timers();
 				timer_1s = 0;
+			}
+
+			if(tsFlag == 1 && touchYvalue <= 30){			//Goal EXTRA
+				tsFlag = 0;
+				play_timer = 0;
+				total_time = 0;
+
+				//Flag para não mudar de jogador.
+				reset_time_flag = 1;
 			}
 
 			stamp_play();
@@ -1509,19 +1520,21 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
 		touchYvalue = (int) TS_State.touchY[0];
 	}
 	if (GPIO_Pin == GPIO_PIN_0) {
-		blue_button = 1;
+		//blue_button = 1;
+		num_plays++;				//Goal EXTRA
+		BSP_LED_Off(LED_RED);		//Goal EXTRA
+		BSP_LED_Off(LED_GREEN);		//Goal EXTRA
 	}
 }
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 
-//Está configurado para 1 segundo
+	//Está configurado para 1 segundo
 	if (htim->Instance == TIM6) {
 		play_timer--;
 		total_time++;
 		touch_timer = 1;
 		timer_1s = 1;
-
 	}
 
 	if (htim->Instance == TIM7)
